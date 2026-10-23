@@ -7,7 +7,9 @@ import { registerScanRoutes } from "./routes/scan.js";
 import { registerReputationRoutes } from "./routes/reputation.js";
 import { registerStatsRoutes } from "./routes/stats.js";
 import { registerReportRoutes } from "./routes/report.js";
+import { registerIntelRoutes } from "./routes/intel.js";
 import { intel } from "./intel/store.js";
+import { startIntelIngestion } from "./intel/ingest.js";
 import { db } from "./db.js";
 import { scanCacheStats } from "./routes/scan.js";
 
@@ -48,6 +50,7 @@ await registerScanRoutes(app);
 await registerReputationRoutes(app);
 await registerStatsRoutes(app);
 await registerReportRoutes(app);
+await registerIntelRoutes(app);
 
 try {
   await db.connect();
@@ -56,6 +59,7 @@ try {
   else app.log.info("No MONGODB_URI set — running without persistence");
 
   await intel.load();
+  startIntelIngestion({ info: (m) => app.log.info(m) });
   await app.listen({ port: config.port, host: config.host });
   app.log.info(`SolShield backend listening on :${config.port}`);
 } catch (err) {

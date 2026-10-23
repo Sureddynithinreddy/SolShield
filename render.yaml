@@ -1,0 +1,24 @@
+# Render blueprint for the SolShield backend.
+# Set MONGODB_URI (and optionally SOLANA_RPC_URLS, API_KEYS, ADMIN_KEY) in the
+# Render dashboard as secrets.
+services:
+  - type: web
+    name: solshield-backend
+    runtime: docker
+    dockerfilePath: backend/Dockerfile
+    dockerContext: .
+    plan: starter
+    healthCheckPath: /api/health
+    envVars:
+      - key: PORT
+        value: "8787"
+      - key: HOST
+        value: "0.0.0.0"
+      - key: MONGODB_URI
+        sync: false
+      - key: MONGODB_DB
+        value: solshield
+      - key: CORS_ORIGINS
+        sync: false
+      - key: SOLANA_RPC_URLS
+        sync: false

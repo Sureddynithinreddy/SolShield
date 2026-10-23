@@ -49,3 +49,36 @@ Point the frontend at the backend by setting `VITE_API_URL=http://localhost:8787
    the origin domain (phishing + lookalike detection).
 6. The shared scanner engines produce findings + fired rules, which are scored into a verdict.
 7. If the backend is unreachable, the frontend runs the same engines locally (fail-safe mode).
+
+## Deployment
+
+### Local full stack (Docker)
+
+```bash
+docker compose up --build
+# frontend: http://localhost:8080   backend: http://localhost:8787   mongo: :27017
+```
+
+The compose file runs MongoDB + backend + frontend together. Both Dockerfiles use the
+**repo root** as build context (the backend/frontend import the sibling `shared/` package).
+
+### Hosted
+
+- **Backend** → Render (see `render.yaml`) or any Docker host. Build with
+  `docker build -f backend/Dockerfile -t solshield-backend .`. Set `MONGODB_URI`,
+  `CORS_ORIGINS`, and optionally `SOLANA_RPC_URLS` / `API_KEYS` / `ADMIN_KEY` as env vars.
+- **Frontend** → Vercel/Netlify (static) via `frontend/vercel.json`, or the
+  `frontend/Dockerfile` (nginx). Pass `VITE_API_URL` (your backend URL) and
+  `VITE_SOLANA_CLUSTER` at build time.
+
+All persistence and intel features degrade gracefully when `MONGODB_URI` is unset, so the
+backend runs even without a database.
+
+## Testing
+
+```bash
+cd shared && npm test     # 28 unit tests (scanners, scoring, detection)
+cd backend && npm test    # 9 route tests (via Fastify inject)
+```
+
+CI runs typecheck + tests + build for all three packages on every push (`.github/workflows/ci.yml`).

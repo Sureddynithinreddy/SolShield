@@ -90,6 +90,30 @@ export async function scanTransaction(
   return { ok: local.ok, error: local.error, scenario: local.scenario, source: "local" };
 }
 
+export interface BackendStats {
+  available: boolean;
+  scansTotal: number;
+  scansToday: number;
+  blocked: number;
+  valueProtectedUsd: number;
+  threatBreakdown: { label: string; count: number; color: string }[];
+  trend: { d: string; safe: number; caution: number; dangerous: number }[];
+}
+
+/** Fleet-wide analytics from the backend (null if no backend / unavailable). */
+export async function fetchStats(): Promise<BackendStats | null> {
+  if (!API_URL) return null;
+  try {
+    const res = await fetch(`${API_URL}/api/stats`);
+    if (!res.ok) return null;
+    const j = await res.json();
+    if (!j?.ok || !j?.available) return null;
+    return j as BackendStats;
+  } catch {
+    return null;
+  }
+}
+
 /** Domain reputation via the backend (returns null if unavailable). */
 export async function fetchDomainReputation(domain: string): Promise<{
   verdict: "trusted" | "unknown" | "dangerous";

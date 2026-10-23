@@ -1,10 +1,12 @@
+import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { scanTrend, threatBreakdown } from "@/lib/mock";
 import { StatCard, Card, Divider } from "@/components/ui";
-import { cx, shortAddr } from "@/lib/format";
+import { cx, shortAddr, usd } from "@/lib/format";
 import { useWalletData } from "@/lib/useWalletData";
 import { ConnectWalletButton } from "@/wallet/ConnectWalletButton";
 import { activeCluster, explorerAddrUrl, explorerTxUrl, relativeTime } from "@/lib/solana";
+import { fetchStats, type BackendStats } from "@/lib/api";
 import {
   Activity,
   ShieldCheck,
@@ -23,6 +25,22 @@ import {
 export default function Dashboard() {
   const data = useWalletData();
   const { connected, address, snapshot, history, status } = data;
+  const [stats, setStats] = useState<BackendStats | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetchStats().then((s) => {
+      if (!cancelled) setStats(s);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Use real backend analytics when available, else the labelled sample data.
+  const liveTrend = stats?.trend?.length ? stats.trend : scanTrend;
+  const liveThreats = stats?.threatBreakdown?.length ? stats.threatBreakdown : threatBreakdown;
+  const statsAreReal = !!stats;
 
   const tokenCount = snapshot?.tokens.length ?? 0;
   const solBalance = snapshot?.solBalance ?? 0;
@@ -96,13 +114,23 @@ export default function Dashboard() {
               accent="safe"
               icon={<Activity width={18} height={18} />}
             />
-            <StatCard
-              label="Protection"
-              value={<span className="text-safe">Active</span>}
-              sub="Firewall watching signs"
-              accent="safe"
-              icon={<ShieldCheck width={18} height={18} />}
-            />
+            {statsAreReal ? (
+              <StatCard
+                label="Threats Blocked"
+                value={stats!.blocked}
+                sub={`${usd(stats!.valueProtectedUsd)} protected`}
+                accent="danger"
+                icon={<ShieldCheck width={18} height={18} />}
+              />
+            ) : (
+              <StatCard
+                label="Protection"
+                value={<span className="text-safe">Active</span>}
+                sub="Firewall watching signs"
+                accent="safe"
+                icon={<ShieldCheck width={18} height={18} />}
+              />
+            )}
           </div>
 
           {/* Your assets — real balances */}
@@ -128,16 +156,16 @@ export default function Dashboard() {
               />
             </Card>
 
-            {/* Threat intel — labeled sample (no public backend to source from) */}
+            {/* Threat intel — real when backend present, else labelled sample */}
             <Card>
               <div className="mb-1 flex items-center gap-2 text-white">
                 <AlertTriangle width={18} height={18} className="text-caution" />
                 <h3 className="text-sm font-semibold">Threat intel</h3>
               </div>
-              <SampleTag />
+              <DataTag real={statsAreReal} />
               <div className="mt-3 space-y-3">
-                {threatBreakdown.map((t) => {
-                  const max = Math.max(...threatBreakdown.map((x) => x.count));
+                {liveThreats.map((t) => {
+                  const max = Math.max(1, ...liveThreats.map((x) => x.count));
                   return (
                     <div key={t.label}>
                       <div className="flex items-center justify-between text-xs">
@@ -171,9 +199,9 @@ export default function Dashboard() {
                 </div>
                 <Legend />
               </div>
-              <SampleTag />
+              <DataTag real={statsAreReal} />
               <div className="mt-3">
-                <ScanChart />
+                <ScanChart trend={liveTrend} />
               </div>
             </Card>
 
@@ -378,10 +406,15 @@ function RecentActivity({
   );
 }
 
-function SampleTag() {
+function DataTag({ real }: { real: boolean }) {
   return (
-    <span className="chip border-white/10 bg-white/[0.03] text-[0.6rem] text-slate-500">
-      Sample data
+    <span
+      className={cx(
+        "chip text-[0.6rem]",
+        real ? "border-safe/30 bg-safe/10 text-safe" : "border-white/10 bg-white/[0.03] text-slate-500"
+      )}
+    >
+      {real ? "Live backend data" : "Sample data"}
     </span>
   );
 }
@@ -402,22 +435,22 @@ function Legend() {
   );
 }
 
-function ScanChart() {
-  const max = Math.max(...scanTrend.map((d) => d.safe + d.caution + d.dangerous));
+function ScanChart({ trend }: { trend: { d: string; safe: number; caution: number; dangerous: number }[] }) {
+  const max = Math.max(1, ...trend.map((d) => d.safe + d.caution + d.dangerous));
   return (
     <div className="flex h-48 items-end gap-1.5">
-      {scanTrend.map((d) => {
+      {trend.map((d) => {
         const total = d.safe + d.caution + d.dangerous;
-        const h = (total / max) * 100;
+        const h = total === 0 ? 2 : (total / max) * 100;
         return (
           <div key={d.d} className="group relative flex flex-1 flex-col justify-end" style={{ height: "100%" }}>
             <div
               className="flex w-full flex-col overflow-hidden rounded-md transition-all"
               style={{ height: `${h}%` }}
             >
-              <div style={{ height: `${(d.dangerous / total) * 100}%`, background: "#f43f5e" }} />
-              <div style={{ height: `${(d.caution / total) * 100}%`, background: "#fbbf24" }} />
-              <div style={{ height: `${(d.safe / total) * 100}%`, background: "#34d399" }} />
+              <div style={{ height: `${total === 0 ? 0 : (d.dangerous / total) * 100}%`, background: "#f43f5e" }} />
+              <div style={{ height: `${total === 0 ? 0 : (d.caution / total) * 100}%`, background: "#fbbf24" }} />
+              <div style={{ height: `${total === 0 ? 100 : (d.safe / total) * 100}%`, background: "#34d399" }} />
             </div>
             <div className="pointer-events-none absolute -top-1 left-1/2 z-10 hidden -translate-x-1/2 -translate-y-full whitespace-nowrap rounded-md border border-white/10 bg-ink-800 px-2 py-1 text-[0.62rem] text-slate-200 shadow-lg group-hover:block">
               {total} scans · <span className="text-danger">{d.dangerous} blocked</span>

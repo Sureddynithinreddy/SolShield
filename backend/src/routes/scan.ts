@@ -2,6 +2,7 @@ import type { FastifyInstance } from "fastify";
 import { rpcPool } from "../rpc.js";
 import { intel } from "../intel/store.js";
 import { analyze, type ScanRequest } from "../analyze.js";
+import { recordScan } from "../scanlog.js";
 
 export async function registerScanRoutes(app: FastifyInstance) {
   app.post<{ Body: ScanRequest }>("/api/scan", async (request, reply) => {
@@ -14,7 +15,11 @@ export async function registerScanRoutes(app: FastifyInstance) {
     const started = Date.now();
     try {
       const result = await rpcPool.withFailover((conn) => analyze(conn, body));
-      if (result.scenario) result.scenario.scanMs = Date.now() - started;
+      if (result.scenario) {
+        result.scenario.scanMs = Date.now() - started;
+        // Fire-and-forget scan log (privacy-preserving, no-op without DB).
+        void recordScan(result.scenario, { origin: body.origin, signer: body.signer });
+      }
       return reply.send(result);
     } catch (err) {
       request.log.error(err);

@@ -10,7 +10,6 @@ import { config } from "./config.js";
  * ------------------------------------------------------------------ */
 
 export interface ScanDoc {
-  _id?: unknown;
   createdAt: Date;
   origin: string | null;
   signerHash: string | null; // sha-256 hash; never store raw addresses
@@ -25,7 +24,6 @@ export interface ScanDoc {
 }
 
 export interface ReportDoc {
-  _id?: unknown;
   createdAt: Date;
   kind: "address" | "domain";
   value: string;
@@ -36,7 +34,6 @@ export interface ReportDoc {
 }
 
 export interface IntelAddressDoc {
-  _id?: unknown;
   address: string;
   category: "drainer" | "sanctioned" | "cluster";
   label: string;
@@ -46,7 +43,6 @@ export interface IntelAddressDoc {
 }
 
 export interface IntelDomainDoc {
-  _id?: unknown;
   domain: string;
   category: "phishing";
   source: "community" | "feed" | "seed";

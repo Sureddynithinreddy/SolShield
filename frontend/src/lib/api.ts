@@ -114,6 +114,28 @@ export async function fetchStats(): Promise<BackendStats | null> {
   }
 }
 
+/** Submit a community scam report. Returns the new status, or an error. */
+export async function submitReport(input: {
+  kind: "address" | "domain";
+  value: string;
+  reason: string;
+  reporter?: string;
+}): Promise<{ ok: boolean; status?: string; confirmations?: number; error?: string }> {
+  if (!API_URL) return { ok: false, error: "No backend configured." };
+  try {
+    const res = await fetch(`${API_URL}/api/report`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(input),
+    });
+    const j = await res.json();
+    if (!res.ok || !j?.ok) return { ok: false, error: j?.error ?? "Report failed." };
+    return { ok: true, status: j.status, confirmations: j.confirmations };
+  } catch {
+    return { ok: false, error: "Could not reach the backend." };
+  }
+}
+
 /** Domain reputation via the backend (returns null if unavailable). */
 export async function fetchDomainReputation(domain: string): Promise<{
   verdict: "trusted" | "unknown" | "dangerous";

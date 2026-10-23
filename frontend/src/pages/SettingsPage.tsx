@@ -3,6 +3,7 @@ import { listEntries, rulePack, userRules as seedRules } from "@/lib/mock";
 import type { Strictness, UserRule } from "@/lib/types";
 import { Card, Divider, Toggle } from "@/components/ui";
 import { SeverityTag } from "@/components/Badges";
+import { ReportForm } from "@/components/ReportForm";
 import { cx } from "@/lib/format";
 import {
   Settings,
@@ -16,14 +17,17 @@ import {
   Wallet,
   Fingerprint,
   Eye,
+  AlertTriangle,
+  Users,
 } from "@/components/icons";
 
-type Tab = "general" | "lists" | "rules" | "privacy";
+type Tab = "general" | "lists" | "rules" | "privacy" | "community";
 
 const tabs: { id: Tab; label: string; icon: JSX.Element }[] = [
   { id: "general", label: "General", icon: <Settings width={16} height={16} /> },
   { id: "lists", label: "Allow & block", icon: <ShieldCheck width={16} height={16} /> },
   { id: "rules", label: "Rules", icon: <Code width={16} height={16} /> },
+  { id: "community", label: "Community", icon: <Users width={16} height={16} /> },
   { id: "privacy", label: "Privacy", icon: <Lock width={16} height={16} /> },
 ];
 
@@ -65,7 +69,42 @@ export default function SettingsPage() {
       {tab === "general" && <GeneralTab />}
       {tab === "lists" && <ListsTab />}
       {tab === "rules" && <RulesTab />}
+      {tab === "community" && <CommunityTab />}
       {tab === "privacy" && <PrivacyTab />}
+    </div>
+  );
+}
+
+/* ------------------------------ Community ------------------------------ */
+
+function CommunityTab() {
+  return (
+    <div className="grid gap-6 lg:grid-cols-[1fr_1fr]">
+      <ReportForm />
+      <Card className="bg-gradient-to-br from-ink-850/80 to-ink-900/60">
+        <div className="flex items-center gap-2 text-sm font-semibold text-white">
+          <AlertTriangle width={16} height={16} className="text-caution" />
+          How community intel works
+        </div>
+        <Divider className="my-3" />
+        <ul className="space-y-2.5 text-xs text-slate-400">
+          {[
+            "Anyone can report a scam address or dApp domain.",
+            "Once enough users report the same entry, it's auto-confirmed.",
+            "Confirmed reports are merged into the shared threat intel.",
+            "From then on, every scan flags that address or domain for everyone.",
+          ].map((t) => (
+            <li key={t} className="flex items-start gap-2">
+              <Check width={14} height={14} className="mt-0.5 shrink-0 text-safe" />
+              {t}
+            </li>
+          ))}
+        </ul>
+        <p className="mt-3 text-[0.68rem] leading-relaxed text-slate-500">
+          This is the off-chain half of the PRD's reputation registry. The on-chain,
+          stake-and-slash version is a later phase.
+        </p>
+      </Card>
     </div>
   );
 }

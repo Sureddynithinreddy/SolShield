@@ -73,8 +73,40 @@ class IntelStore {
       phishingDomains: new Set(domains.phishing.map((d) => d.toLowerCase())),
       knownDomains: domains.known,
     };
+
+    // Merge community + feed intel from the database (confirmed reports etc.).
+    await this.mergeDbIntel();
+
     this.loadedAt = Date.now();
   }
+
+  /** Overlays persisted (community/feed) intel on top of the seed lists. */
+  private async mergeDbIntel(): Promise<void> {
+    const { db } = await import("../db.js");
+    if (!db.connected) return;
+    try {
+      const [addrs, doms] = await Promise.all([
+        db.intelAddresses.find({}).toArray(),
+        db.intelDomains.find({}).toArray(),
+      ]);
+      for (const a of addrs) {
+        if (a.category === "sanctioned") this.data.sanctioned.add(a.address);
+        else if (a.category === "cluster") this.data.clusters.add(a.address);
+        else
+          this.data.drainers.set(a.address, {
+            address: a.address,
+            label: a.label ?? "Community-reported",
+            thefts: a.thefts ?? 0,
+          });
+      }
+      for (const d of doms) this.data.phishingDomains.add(d.domain.toLowerCase());
+      this.communityCount = addrs.length + doms.length;
+    } catch {
+      /* db intel is best-effort */
+    }
+  }
+
+  private communityCount = 0;
 
   /* ---- address lookups ---- */
   drainer(address: string): DrainerEntry | undefined {
@@ -126,6 +158,7 @@ class IntelStore {
       programsBlock: this.data.programsBlock.size,
       phishingDomains: this.data.phishingDomains.size,
       knownDomains: this.data.knownDomains.length,
+      community: this.communityCount,
       loadedAt: this.loadedAt ? new Date(this.loadedAt).toISOString() : null,
     };
   }

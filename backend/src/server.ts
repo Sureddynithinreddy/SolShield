@@ -5,6 +5,7 @@ import { rpcPool } from "./rpc.js";
 import { registerScanRoutes } from "./routes/scan.js";
 import { registerReputationRoutes } from "./routes/reputation.js";
 import { registerStatsRoutes } from "./routes/stats.js";
+import { registerReportRoutes } from "./routes/report.js";
 import { intel } from "./intel/store.js";
 import { db } from "./db.js";
 
@@ -36,6 +37,7 @@ app.get("/api/health", async () => {
 await registerScanRoutes(app);
 await registerReputationRoutes(app);
 await registerStatsRoutes(app);
+await registerReportRoutes(app);
 
 try {
   await db.connect();

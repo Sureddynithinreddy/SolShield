@@ -124,6 +124,12 @@ export async function analyzeTransaction(
     const raw: RawInstruction = {
       programId,
       dataFirstByte: ci.data.length > 0 ? ci.data[0] : undefined,
+      discriminator:
+        ci.data.length >= 8
+          ? Array.from(ci.data.slice(0, 8))
+              .map((x) => x.toString(16).padStart(2, "0"))
+              .join("")
+          : undefined,
       accountCount: ci.accountKeyIndexes.length,
     };
     rawInstructions.push(raw);

@@ -167,8 +167,10 @@ export function authorityChangeRules(changes: AuthorityChange[]): FiredRule[] {
 
 export interface RawInstruction {
   programId: string;
-  /** base58/base64 or raw byte length is fine; we only use data[0] when present */
+  /** first data byte — enough for System/SPL Token tag dispatch */
   dataFirstByte?: number;
+  /** hex of the first 8 data bytes — the Anchor discriminator for IDL programs */
+  discriminator?: string;
   accountCount: number;
 }
 
@@ -209,6 +211,52 @@ const TOKEN_IX: Record<number, { name: string; flagged?: boolean }> = {
   13: { name: "ApproveChecked", flagged: true },
 };
 
+/**
+ * Known DeFi / NFT programs. Each has a friendly name and (optionally) an
+ * Anchor-discriminator → instruction-name map. Anchor discriminators are the
+ * first 8 bytes of sha256("global:<ix_name>"); we match on their hex.
+ */
+interface KnownProgram {
+  name: string;
+  /** hex discriminator (16 chars) → human instruction name */
+  discriminators?: Record<string, string>;
+  /** default verb when the discriminator is unknown */
+  defaultVerb?: string;
+}
+
+export const KNOWN_PROGRAMS: Record<string, KnownProgram> = {
+  JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4: {
+    name: "Jupiter",
+    defaultVerb: "swap",
+    discriminators: {
+      // sha256("global:route")[:8], sha256("global:shared_accounts_route")[:8]
+      e517cb977ae3ad2a: "route",
+      c1209b3341d69c81: "shared_accounts_route",
+      "0d8a8c2f9d2b6e5f": "exact_out_route",
+    },
+  },
+  "675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8": {
+    name: "Raydium AMM v4",
+    defaultVerb: "swap",
+    discriminators: { "09": "swap" },
+  },
+  whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc: {
+    name: "Orca Whirlpools",
+    defaultVerb: "swap",
+    discriminators: {
+      f8c69e91e17587c8: "swap",
+      "2e9cf3760dcdfbb2": "two_hop_swap",
+    },
+  },
+  "6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P": {
+    name: "pump.fun",
+    defaultVerb: "trade",
+    discriminators: { "66063d1201daebea": "buy", "33e685a4017f83ad": "sell" },
+  },
+  TSWAPaqyCSx2KABk68Shruf4rp7CxcNi8hAsbdwmHbN: { name: "Tensor", defaultVerb: "trade" },
+  M2mx93ekt1fmXSVkTrUL9xVFHkmME8HTUi5Cyc5aF7K: { name: "Magic Eden v2", defaultVerb: "trade" },
+};
+
 export function decodeInstruction(ix: RawInstruction): DecodedInstruction {
   const b = ix.dataFirstByte;
   switch (ix.programId) {
@@ -245,11 +293,22 @@ export function decodeInstruction(ix: RawInstruction): DecodedInstruction {
       return { name: "ComputeBudget", summary: "Set compute unit limit / price" };
     case MEMO:
       return { name: "Memo", summary: "Attach a memo note" };
-    default:
+    default: {
+      const known = KNOWN_PROGRAMS[ix.programId];
+      if (known) {
+        const disc = ix.discriminator?.toLowerCase();
+        const ixName = disc ? known.discriminators?.[disc] : undefined;
+        const verb = ixName ?? known.defaultVerb ?? "interact";
+        return {
+          name: `${known.name}: ${verb}`,
+          summary: `${known.name} ${verb} · touches ${ix.accountCount} accounts`,
+        };
+      }
       return {
         name: "Unrecognized instruction",
         summary: `Custom program · touches ${ix.accountCount} accounts`,
       };
+    }
   }
 }
 

@@ -118,6 +118,10 @@ export async function analyze(conn: Connection, req: ScanRequest): Promise<ScanR
     const raw: RawInstruction = {
       programId,
       dataFirstByte: ci.data.length > 0 ? ci.data[0] : undefined,
+      discriminator:
+        ci.data.length >= 8
+          ? Buffer.from(ci.data.slice(0, 8)).toString("hex")
+          : undefined,
       accountCount: ci.accountKeyIndexes.length,
     };
     rawIxs.push(raw);

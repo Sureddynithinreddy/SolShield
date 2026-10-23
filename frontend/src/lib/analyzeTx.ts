@@ -8,10 +8,10 @@ import {
   type AddressLookupTableAccount,
 } from "@solana/web3.js";
 import type {
+  BalanceChange,
   InstructionItem,
   ScannerPanel,
   TxScenario,
-  Verdict,
 } from "./types";
 import { getMintInfo, getProgramInfo, labelForProgram } from "./solana";
 import {
@@ -19,7 +19,14 @@ import {
   evaluateTokenScanner,
   evaluateWalletScanner,
 } from "./securityChecks";
-import { verdictFromScore } from "./theme";
+import {
+  decodeInstruction,
+  computeBalanceChanges,
+  usesDurableNonce,
+  type RawInstruction,
+  type TokenBalanceSnapshot,
+} from "@shared/detection";
+import { scoreFromRules, sortRulesBySeverity } from "@shared/scoring";
 
 /* ------------------------------------------------------------------ *
  * Real transaction analyzer (#2).
@@ -108,35 +115,58 @@ export async function analyzeTransaction(
   const message = tx.message;
   const { keys } = await resolveAccountKeys(conn, message);
 
-  // Build human-readable instructions + collect program ids touched.
+  // Build human-readable instructions (real decoding) + collect program ids.
   const programIds = new Set<string>();
+  const rawInstructions: RawInstruction[] = [];
   const instructions: InstructionItem[] = message.compiledInstructions.map((ci, i) => {
     const programId = keys[ci.programIdIndex]?.toBase58() ?? "unknown";
     programIds.add(programId);
-    const touched = ci.accountKeyIndexes
-      .map((idx) => keys[idx]?.toBase58())
-      .filter(Boolean) as string[];
+    const raw: RawInstruction = {
+      programId,
+      dataFirstByte: ci.data.length > 0 ? ci.data[0] : undefined,
+      accountCount: ci.accountKeyIndexes.length,
+    };
+    rawInstructions.push(raw);
+    const decoded = decodeInstruction(raw);
     return {
       index: i,
       program: labelForProgram(programId),
       programId,
-      name: `Instruction ${i}`,
-      summary: `Touches ${touched.length} account${touched.length === 1 ? "" : "s"} · ${ci.data.length} bytes data`,
+      name: decoded.name,
+      summary: decoded.summary,
+      flagged: decoded.flagged,
     };
   });
 
-  // --- Simulate (best-effort) ---
+  const durableNonce = usesDurableNonce(rawInstructions[0]);
+
+  // --- Simulate (best-effort), capturing fee-payer post-state for a SOL diff ---
+  const feePayerKey = keys[0];
   let simLogs: string[] = [];
   let simUnits: number | null = null;
   let simErr = false;
+  let balanceChanges: BalanceChange[] = [];
   try {
+    const preLamports = feePayerKey ? await conn.getBalance(feePayerKey).catch(() => null) : null;
     const sim = await conn.simulateTransaction(tx, {
       replaceRecentBlockhash: true,
       sigVerify: false,
+      accounts: feePayerKey ? { encoding: "base64", addresses: [feePayerKey.toBase58()] } : undefined,
     });
     simLogs = sim.value.logs ?? [];
     simUnits = sim.value.unitsConsumed ?? null;
     simErr = sim.value.err != null;
+
+    const postLamports = sim.value.accounts?.[0]?.lamports ?? null;
+    if (preLamports != null && postLamports != null && feePayerKey) {
+      balanceChanges = computeBalanceChanges({
+        owner: feePayerKey.toBase58(),
+        preSol: preLamports,
+        postSol: postLamports,
+        preTokens: [] as TokenBalanceSnapshot[],
+        postTokens: [] as TokenBalanceSnapshot[],
+      });
+    }
   } catch {
     simErr = true;
   }
@@ -199,14 +229,20 @@ export async function analyzeTransaction(
     });
   }
 
-  // --- Score: weighted by severity (mirrors the PRD scoring model) ---
-  const mult = { info: 0, low: 0.5, medium: 1, high: 2, critical: 4 } as const;
-  const weight = 14;
-  let raw = allRules.reduce((s, r) => s + weight * mult[r.severity], 0);
+  // R-009 — durable nonce (can be signed now, submitted later).
+  if (durableNonce) {
+    allRules.push({
+      id: "R-009",
+      title: "Durable nonce",
+      severity: "medium",
+      explanation: "This transaction uses a durable nonce, so it can be signed now and submitted much later. Treat with extra caution from untrusted sites.",
+      recommendedAction: "Only sign durable-nonce transactions you initiated.",
+    });
+  }
+
+  // --- Score via the shared PRD scoring model ---
+  const { score, verdict } = scoreFromRules(allRules);
   const hardBlock = allRules.some((r) => r.hardBlock);
-  let score = Math.min(100, Math.round(raw));
-  if (hardBlock) score = Math.max(score, 90);
-  const verdict: Verdict = hardBlock ? "dangerous" : verdictFromScore(score);
 
   const scanners: ScannerPanel[] = [
     { key: "program", title: "Program Scanner", findings: programCheck.findings },
@@ -231,8 +267,7 @@ export async function analyzeTransaction(
     },
   ];
 
-  const order = { critical: 0, high: 1, medium: 2, low: 3, info: 4 } as const;
-  const firedRules = allRules.sort((a, b) => order[a.severity] - order[b.severity]);
+  const firedRules = sortRulesBySeverity(allRules);
 
   const summary = hardBlock
     ? "A hard-block rule fired. This transaction is dangerous — do not sign."
@@ -252,7 +287,7 @@ export async function analyzeTransaction(
     score,
     confidence: simErr ? "low" : "medium",
     summary,
-    balanceChanges: [], // requires pre/post token-balance diffing from sim meta
+    balanceChanges,
     permissions: tokenMetas
       .filter((t) => t.delegateApproval)
       .map((t) => ({
@@ -275,6 +310,7 @@ export async function analyzeTransaction(
     tokens: usesTokenProgram ? tokenMetas : [],
     feeSol: 0,
     scanMs: 0,
+    scanSource: "local",
   };
 
   return { ok: true, scenario, simLogs, simUnits };

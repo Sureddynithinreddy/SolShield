@@ -1,5 +1,8 @@
 import type { Severity, Verdict } from "./types";
 
+// Single source of truth for score→verdict mapping lives in shared.
+export { verdictFromScore } from "@shared/scoring";
+
 export const verdictMeta: Record<
   Verdict,
   { label: string; color: string; text: string; ring: string; bg: string; glow: string }
@@ -40,12 +43,6 @@ export const severityMeta: Record<
   high: { label: "High", color: "#fb923c", chip: "border-orange-500/40 text-orange-300 bg-orange-500/10", multiplier: 2 },
   critical: { label: "Critical", color: "#f43f5e", chip: "border-danger/40 text-danger bg-danger/10", multiplier: 4 },
 };
-
-export function verdictFromScore(score: number): Verdict {
-  if (score <= 29) return "safe";
-  if (score <= 59) return "caution";
-  return "dangerous";
-}
 
 export const statusColor: Record<string, string> = {
   ok: "text-safe",

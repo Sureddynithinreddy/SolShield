@@ -7,7 +7,7 @@ import { Card, Divider } from "@/components/ui";
 import { VerdictPill } from "@/components/Badges";
 import { ConnectWalletButton } from "@/wallet/ConnectWalletButton";
 import { cx, shortAddr } from "@/lib/format";
-import { analyzeTransaction } from "@/lib/analyzeTx";
+import { scanTransaction, backendConfigured } from "@/lib/api";
 import { activeCluster } from "@/lib/solana";
 import {
   Scan,
@@ -259,11 +259,16 @@ function RealScanMode() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [scenario, setScenario] = useState<TxScenario | null>(null);
+  const [source, setSource] = useState<"backend" | "local" | null>(null);
+  const [fellBack, setFellBack] = useState(false);
   const [decision, setDecision] = useState<"allowed" | "blocked" | "overrode" | null>(null);
+  const hasBackend = backendConfigured();
 
   const run = async () => {
     setError(null);
     setScenario(null);
+    setSource(null);
+    setFellBack(false);
     setDecision(null);
     if (!input.trim()) {
       setError("Paste a base64-encoded unsigned transaction first.");
@@ -271,11 +276,16 @@ function RealScanMode() {
     }
     setBusy(true);
     try {
-      const res = await analyzeTransaction(connection, input, publicKey?.toBase58());
+      const res = await scanTransaction(connection, input, {
+        origin: undefined,
+        signer: publicKey?.toBase58(),
+      });
       if (!res.ok || !res.scenario) {
         setError(res.error ?? "Analysis failed.");
       } else {
         setScenario(res.scenario);
+        setSource(res.source);
+        setFellBack(!!res.fellBack);
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Analysis failed.");
@@ -324,18 +334,32 @@ function RealScanMode() {
         </Card>
 
         <Card className="bg-gradient-to-br from-ink-850/80 to-ink-900/60">
-          <div className="flex items-center gap-2 text-sm font-semibold text-white">
-            <ShieldCheck width={16} height={16} className="text-safe" />
-            What's real here
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2 text-sm font-semibold text-white">
+              <ShieldCheck width={16} height={16} className="text-safe" />
+              What's real here
+            </div>
+            <span
+              className={cx(
+                "chip text-[0.6rem]",
+                hasBackend
+                  ? "border-cyan/40 bg-cyan/10 text-cyan"
+                  : "border-white/10 bg-white/5 text-slate-400"
+              )}
+            >
+              {hasBackend ? "Backend engine + intel" : "Local engine"}
+            </span>
           </div>
           <Divider className="my-3" />
           <ul className="space-y-2 text-xs text-slate-400">
             {[
-              "Transaction is decoded on your device (legacy + v0, ALTs resolved)",
+              "Transaction decoded (legacy + v0, ALTs resolved)",
               `simulateTransaction runs against ${activeCluster()} via RPC`,
               "Program upgrade authority read live from the ProgramData account",
               "Token mint / freeze authority + Token-2022 extensions read from chain",
-              "Scanners (Program / Token) run on that real metadata",
+              hasBackend
+                ? "Drainer / sanctioned / phishing / lookalike checks via backend threat intel"
+                : "Structural wallet checks only (no backend intel configured)",
             ].map((t) => (
               <li key={t} className="flex items-start gap-2">
                 <Check width={14} height={14} className="mt-0.5 shrink-0 text-safe" />
@@ -344,8 +368,9 @@ function RealScanMode() {
             ))}
           </ul>
           <p className="mt-3 text-[0.68rem] leading-relaxed text-slate-500">
-            Drainer and phishing blocklists need the SolShield backend intel feeds, so the Wallet
-            Scanner here only evaluates structural facts (fee payer, self). Nothing is signed or sent.
+            {hasBackend
+              ? "If the backend is unreachable, SolShield falls back to the in-browser scanner automatically. Nothing is signed or sent."
+              : "Set VITE_API_URL to run scans through the backend with full drainer/phishing intel. Nothing is signed or sent."}
           </p>
         </Card>
       </div>
@@ -371,7 +396,23 @@ function RealScanMode() {
           </div>
         )}
         {scenario && !decision && (
-          <div className="flex justify-center">
+          <div className="flex flex-col items-center gap-2">
+            {source && (
+              <span
+                className={cx(
+                  "chip text-[0.62rem]",
+                  source === "backend"
+                    ? "border-cyan/40 bg-cyan/10 text-cyan"
+                    : "border-caution/40 bg-caution/10 text-caution"
+                )}
+              >
+                {source === "backend"
+                  ? "Scanned by backend (full threat intel)"
+                  : fellBack
+                  ? "Backend unreachable — local fail-safe scan"
+                  : "Scanned by local engine"}
+              </span>
+            )}
             <SigningOverlay
               scenario={scenario}
               onDecision={(d) => setDecision(d)}

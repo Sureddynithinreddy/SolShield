@@ -1,0 +1,97 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    color-scheme: dark;
+  }
+
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+
+  body {
+    @apply bg-ink-950 text-slate-200 font-sans antialiased;
+    background-image:
+      radial-gradient(70% 50% at 15% -10%, rgba(34, 211, 238, 0.08), transparent 60%),
+      radial-gradient(60% 50% at 100% 0%, rgba(139, 92, 246, 0.1), transparent 55%);
+    background-attachment: fixed;
+  }
+
+  ::selection {
+    @apply bg-cyan/30 text-white;
+  }
+
+  /* Scrollbar */
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: rgba(148, 163, 184, 0.18);
+    border-radius: 9999px;
+    border: 2px solid transparent;
+    background-clip: content-box;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: rgba(148, 163, 184, 0.3);
+    background-clip: content-box;
+  }
+}
+
+@layer components {
+  /* Glass card surface */
+  .glass {
+    @apply rounded-2xl border border-white/[0.06] bg-ink-850/70 shadow-card backdrop-blur-xl;
+  }
+  .glass-soft {
+    @apply rounded-xl border border-white/[0.06] bg-white/[0.02];
+  }
+
+  .mono {
+    @apply font-mono text-[0.82em] tracking-tight;
+  }
+
+  /* Focus ring consistent across interactive elements */
+  .focus-ring {
+    @apply outline-none ring-offset-2 ring-offset-ink-900 focus-visible:ring-2 focus-visible:ring-cyan/70;
+  }
+
+  .btn {
+    @apply inline-flex select-none items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition focus-ring disabled:cursor-not-allowed disabled:opacity-50;
+  }
+  .btn-primary {
+    @apply btn bg-gradient-to-r from-cyan to-violet text-ink-950 hover:brightness-110 active:brightness-95;
+  }
+  .btn-ghost {
+    @apply btn border border-white/10 bg-white/[0.03] text-slate-200 hover:bg-white/[0.07];
+  }
+  .btn-danger {
+    @apply btn bg-danger/90 text-white hover:bg-danger;
+  }
+
+  .chip {
+    @apply inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium;
+  }
+
+  .label-cap {
+    @apply text-[0.68rem] font-semibold uppercase tracking-[0.14em] text-slate-500;
+  }
+}
+
+@layer utilities {
+  .text-gradient {
+    @apply bg-gradient-to-r from-cyan via-cyan-soft to-violet-soft bg-clip-text text-transparent;
+  }
+  .bg-grid {
+    background-image: linear-gradient(rgba(148, 163, 184, 0.045) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(148, 163, 184, 0.045) 1px, transparent 1px);
+    background-size: 42px 42px;
+  }
+}

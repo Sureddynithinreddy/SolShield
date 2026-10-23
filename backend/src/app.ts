@@ -33,6 +33,36 @@ export async function buildApp(opts: { logger?: boolean } = {}): Promise<Fastify
     allowList: (req) => !req.url.startsWith("/api/scan") && !req.url.startsWith("/api/report"),
   });
 
+  // Optional API-key gate on /api/scan. If API_KEYS is unset the API is open
+  // (so the demo frontend works out of the box); if set, a valid x-api-key
+  // header is required — the basis for the metered public API / SDK.
+  if (config.apiKeys.length > 0) {
+    app.addHook("preHandler", async (request, reply) => {
+      if (!request.url.startsWith("/api/scan")) return;
+      const key = request.headers["x-api-key"];
+      if (typeof key !== "string" || !config.apiKeys.includes(key)) {
+        return reply.status(401).send({ ok: false, error: "Invalid or missing API key (x-api-key)." });
+      }
+    });
+  }
+
+  // Self-describing API catalog (lightweight OpenAPI-ish).
+  app.get("/api", async () => ({
+    service: "solshield-api",
+    version: "1.0.0",
+    authRequired: config.apiKeys.length > 0,
+    endpoints: [
+      { method: "GET", path: "/api/health", desc: "Service, RPC, DB, intel and cache status." },
+      { method: "POST", path: "/api/scan", desc: "Scan a transaction.", body: { transaction: "base64 (required)", origin: "string?", signer: "string?" }, auth: config.apiKeys.length > 0 },
+      { method: "GET", path: "/api/reputation", desc: "Domain reputation.", query: { domain: "string (required)" } },
+      { method: "GET", path: "/api/address", desc: "Address threat intel.", query: { address: "string (required)" } },
+      { method: "GET", path: "/api/stats", desc: "Fleet analytics (needs DB)." },
+      { method: "GET", path: "/api/intel", desc: "Threat-intel summary." },
+      { method: "POST", path: "/api/report", desc: "Report a scam.", body: { kind: "address|domain", value: "string", reason: "string?" } },
+      { method: "GET", path: "/api/reports", desc: "Recent community reports." },
+    ],
+  }));
+
   app.get("/api/health", async () => {
     const rpc = await rpcPool.health();
     return {

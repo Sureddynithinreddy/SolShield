@@ -28,6 +28,11 @@ export const config = {
   mongoDb: process.env.MONGODB_DB || "solshield",
   /** optional admin key for protected endpoints (intel refresh, etc.) */
   adminKey: process.env.ADMIN_KEY || "",
+  /** comma-separated API keys; if set, /api/scan requires x-api-key */
+  apiKeys: (process.env.API_KEYS || "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean),
   /** scan result cache TTL (ms) */
   scanCacheTtlMs: Number(process.env.SCAN_CACHE_TTL_MS || 60 * 1000),
   /** rate limit: max requests per window per IP */

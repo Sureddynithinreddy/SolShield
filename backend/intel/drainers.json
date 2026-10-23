@@ -1,0 +1,19 @@
+{
+  "updated": "2026-10-23",
+  "source": "seed",
+  "addresses": [
+    {
+      "address": "7xKqFv2dra1nerWa11etZzZ9kQ2vB8hUeppppppppp9Fv2",
+      "label": "Confirmed drainer cluster",
+      "thefts": 240
+    },
+    {
+      "address": "Dra1nerXXXm4L1c10u5pr0gramZzZ9kQ2vB8hUeppppp",
+      "label": "Drainer program operator",
+      "thefts": 118
+    }
+  ],
+  "clusters": [
+    "Re1ayXm4L1c10u5c1usterWa11etZzZ9kQ2vB8hUeKk3"
+  ]
+}

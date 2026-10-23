@@ -1,0 +1,25 @@
+{
+  "updated": "2026-10-23",
+  "source": "seed",
+  "phishing": [
+    "solana-airdrop-claim.net",
+    "free-sol-reward.app",
+    "pump-fun-claim.io",
+    "phantom-wallet-verify.com"
+  ],
+  "known": [
+    "jup.ag",
+    "raydium.io",
+    "orca.so",
+    "tensor.trade",
+    "magiceden.io",
+    "phantom.app",
+    "solflare.com",
+    "backpack.app",
+    "marinade.finance",
+    "kamino.finance",
+    "drift.trade",
+    "solana.com",
+    "pump.fun"
+  ]
+}

@@ -1,0 +1,12 @@
+{
+  "updated": "2026-10-23",
+  "source": "seed",
+  "allow": [
+    { "programId": "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4", "name": "Jupiter v6", "verified": true },
+    { "programId": "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc", "name": "Orca Whirlpools", "verified": true },
+    { "programId": "675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8", "name": "Raydium AMM v4", "verified": true }
+  ],
+  "block": [
+    { "programId": "Dra1nerXXXm4L1c10u5pr0gramZzZ9kQ2vB8hUeppppp", "name": "Malicious drainer program" }
+  ]
+}

@@ -1,4 +1,4 @@
-import type { BalanceChange, DomainMeta, WalletScanTarget } from "./types";
+import type { BalanceChange, DomainMeta, FiredRule, WalletScanTarget } from "./types";
 import { shortAddr, similarity } from "./format";
 
 /* ================================================================== *
@@ -77,6 +77,90 @@ export function computeBalanceChanges(input: BalanceDiffInput): BalanceChange[] 
   }
 
   return out;
+}
+
+/* ---------------------- Authority / ownership changes ---------------------- */
+
+export interface TokenAccountState {
+  /** the token account address */
+  account: string;
+  /** mint it holds */
+  mint: string;
+  /** current owner of the token account */
+  owner: string;
+  /** delegate, if any */
+  delegate?: string | null;
+  /** close authority, if any */
+  closeAuthority?: string | null;
+}
+
+export interface AuthorityChange {
+  kind: "owner" | "delegate" | "close-authority" | "account-reassigned";
+  account: string;
+  mint?: string;
+  before?: string | null;
+  after?: string | null;
+}
+
+/**
+ * Compares pre/post token-account states for the user and flags dangerous
+ * authority or ownership changes (PRD SIM-3, rule R-002 wallet-authority
+ * takeover). A changed owner on your own token account is the clearest
+ * drainer signature.
+ */
+export function detectAuthorityChanges(
+  userAddress: string,
+  pre: TokenAccountState[],
+  post: TokenAccountState[]
+): AuthorityChange[] {
+  const changes: AuthorityChange[] = [];
+  const preByAccount = new Map(pre.map((s) => [s.account, s]));
+
+  for (const p of post) {
+    const before = preByAccount.get(p.account);
+    if (!before) continue;
+
+    // Owner changed on an account that was ours → takeover.
+    if (before.owner === userAddress && p.owner !== userAddress) {
+      changes.push({ kind: "owner", account: p.account, mint: p.mint, before: before.owner, after: p.owner });
+    }
+    // A new delegate was granted.
+    if ((before.delegate ?? null) !== (p.delegate ?? null) && p.delegate) {
+      changes.push({ kind: "delegate", account: p.account, mint: p.mint, before: before.delegate ?? null, after: p.delegate });
+    }
+    // Close authority newly set to someone else.
+    if ((before.closeAuthority ?? null) !== (p.closeAuthority ?? null) && p.closeAuthority && p.closeAuthority !== userAddress) {
+      changes.push({ kind: "close-authority", account: p.account, mint: p.mint, before: before.closeAuthority ?? null, after: p.closeAuthority });
+    }
+  }
+  return changes;
+}
+
+/** Turns authority changes into fired rules (R-002 takeover is critical/hard-block). */
+export function authorityChangeRules(changes: AuthorityChange[]): FiredRule[] {
+  const rules: FiredRule[] = [];
+  const ownerChange = changes.find((c) => c.kind === "owner");
+  if (ownerChange) {
+    rules.push({
+      id: "R-002",
+      title: "Wallet authority takeover",
+      severity: "critical",
+      hardBlock: true,
+      explanation: `Simulation shows the owner of your token account ${shortAddr(ownerChange.account, 4, 4)} is reassigned to ${shortAddr(ownerChange.after ?? "", 4, 4)}. This hands control of your tokens to someone else.`,
+      recommendedAction: "Hard block. Never sign a transaction that changes who owns your accounts.",
+    });
+  }
+  const closeAuth = changes.find((c) => c.kind === "close-authority");
+  if (closeAuth) {
+    rules.push({
+      id: "R-SIM-3",
+      title: "Close authority granted",
+      severity: "high",
+      explanation: `A close authority on your token account ${shortAddr(closeAuth.account, 4, 4)} is being set to another address, letting them close it and reclaim the rent.`,
+      recommendedAction: "Review carefully — this is unusual for routine transactions.",
+    });
+  }
+  return rules;
 }
 
 /* ---------------------- Instruction decoding ---------------------- */

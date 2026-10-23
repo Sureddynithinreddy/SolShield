@@ -27,7 +27,20 @@ import type {
   TxScenario,
   WalletScanTarget,
 } from "@shared/types";
-import { getMintInfo, getProgramInfo, labelForProgram } from "./chain.js";
+import {
+  getMintInfo,
+  getProgramInfo,
+  labelForProgram,
+  snapshotTokenAccounts,
+  parseTokenAccountValue,
+  type TokenAcctSnapshot,
+} from "./chain.js";
+import {
+  detectAuthorityChanges,
+  authorityChangeRules,
+  type TokenBalanceSnapshot,
+  type TokenAccountState,
+} from "@shared/detection";
 import { intel } from "./intel/store.js";
 
 const SPL_TOKEN = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA";
@@ -113,29 +126,86 @@ export async function analyze(conn: Connection, req: ScanRequest): Promise<ScanR
   });
   const durableNonce = usesDurableNonce(rawIxs[0]);
 
-  // Simulate + SOL balance diff.
+  // --- Simulate with full balance + authority diffing ---
   let simLogs: string[] = [];
   let simErr = false;
   let balanceChanges: BalanceChange[] = [];
+  let authorityChanges: ReturnType<typeof detectAuthorityChanges> = [];
   try {
     const feePayerKey = keys[0];
+
+    // Pre-state: SOL + the signer's token accounts.
+    const preSnap: TokenAcctSnapshot[] = feePayerKey
+      ? await snapshotTokenAccounts(conn, feePayerKey).catch(() => [])
+      : [];
     const preLamports = feePayerKey ? await conn.getBalance(feePayerKey).catch(() => null) : null;
+
+    // Ask the simulator to return post-state for the fee payer + its token
+    // accounts so we can diff balances and authorities.
+    const watchAddresses = [
+      ...(feePayerKey ? [feePayerKey.toBase58()] : []),
+      ...preSnap.map((s) => s.account),
+    ].slice(0, 20);
+
     const sim = await conn.simulateTransaction(tx, {
       replaceRecentBlockhash: true,
       sigVerify: false,
-      accounts: feePayerKey ? { encoding: "base64", addresses: [feePayerKey.toBase58()] } : undefined,
+      // jsonParsed gives us post-state token-account fields; web3.js types only
+      // declare "base64" for this field, but the RPC accepts jsonParsed.
+      accounts: watchAddresses.length
+        ? ({ encoding: "jsonParsed", addresses: watchAddresses } as unknown as {
+            encoding: "base64";
+            addresses: string[];
+          })
+        : undefined,
     });
     simLogs = sim.value.logs ?? [];
     simErr = sim.value.err != null;
-    const postLamports = sim.value.accounts?.[0]?.lamports ?? null;
-    if (preLamports != null && postLamports != null && feePayerKey) {
+
+    const simAccounts = sim.value.accounts ?? [];
+    const owner = feePayerKey?.toBase58() ?? req.signer ?? "";
+
+    // Post SOL (first watched address is the fee payer).
+    const postLamports = simAccounts[0]?.lamports ?? null;
+
+    // Build post token snapshots from jsonParsed sim accounts.
+    const postSnap: TokenAcctSnapshot[] = [];
+    watchAddresses.forEach((addr, i) => {
+      if (i === 0) return; // fee payer (system account)
+      const acc = simAccounts[i];
+      if (!acc) return;
+      const parsed = parseTokenAccountValue(addr, { data: acc.data as unknown as { parsed?: unknown } } as never);
+      if (parsed) postSnap.push(parsed);
+    });
+
+    // Per-token balance diff.
+    const toBalSnap = (s: TokenAcctSnapshot): TokenBalanceSnapshot => ({
+      accountIndex: 0,
+      mint: s.mint,
+      owner: s.owner,
+      uiAmount: s.uiAmount,
+      decimals: s.decimals,
+    });
+    if (preLamports != null && feePayerKey) {
       balanceChanges = computeBalanceChanges({
-        owner: feePayerKey.toBase58(),
+        owner,
         preSol: preLamports,
-        postSol: postLamports,
-        preTokens: [],
-        postTokens: [],
+        postSol: postLamports ?? preLamports,
+        preTokens: preSnap.map(toBalSnap),
+        postTokens: postSnap.map(toBalSnap),
       });
+    }
+
+    // Authority / ownership-change detection (R-002).
+    const toAcctState = (s: TokenAcctSnapshot): TokenAccountState => ({
+      account: s.account,
+      mint: s.mint,
+      owner: s.owner,
+      delegate: s.delegate,
+      closeAuthority: s.closeAuthority,
+    });
+    if (postSnap.length) {
+      authorityChanges = detectAuthorityChanges(owner, preSnap.map(toAcctState), postSnap.map(toAcctState));
     }
   } catch {
     simErr = true;
@@ -181,6 +251,7 @@ export async function analyze(conn: Connection, req: ScanRequest): Promise<ScanR
     ...programCheck.firedRules,
     ...walletCheck.firedRules,
     ...tokenCheck.firedRules,
+    ...authorityChangeRules(authorityChanges),
   ];
   if (simErr) {
     rules.push({
@@ -224,6 +295,20 @@ export async function analyze(conn: Connection, req: ScanRequest): Promise<ScanR
         simErr
           ? { label: "Simulation", value: "Failed or reverted", status: "warn" }
           : { label: "Simulation", value: "Succeeded", status: "ok" },
+        {
+          label: "Net balance change",
+          value: balanceChanges.length
+            ? balanceChanges.map((b) => `${b.amount > 0 ? "+" : ""}${b.amount.toFixed(4)} ${b.symbol}`).join(" / ")
+            : "No net change detected",
+          status: balanceChanges.some((b) => b.amount < 0) ? "info" : "ok",
+        },
+        {
+          label: "Authority changes",
+          value: authorityChanges.length
+            ? authorityChanges.map((c) => c.kind).join(", ")
+            : "None detected",
+          status: authorityChanges.length ? "bad" : "ok",
+        },
         { label: "Instructions", value: `${instructions.length} decoded`, status: "info" },
         { label: "Accounts", value: `${keys.length} resolved`, status: "info" },
       ],

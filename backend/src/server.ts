@@ -1,5 +1,6 @@
 import Fastify from "fastify";
 import cors from "@fastify/cors";
+import rateLimit from "@fastify/rate-limit";
 import { config } from "./config.js";
 import { rpcPool } from "./rpc.js";
 import { registerScanRoutes } from "./routes/scan.js";
@@ -8,6 +9,7 @@ import { registerStatsRoutes } from "./routes/stats.js";
 import { registerReportRoutes } from "./routes/report.js";
 import { intel } from "./intel/store.js";
 import { db } from "./db.js";
+import { scanCacheStats } from "./routes/scan.js";
 
 const app = Fastify({
   logger: {
@@ -21,6 +23,13 @@ await app.register(cors, {
   methods: ["GET", "POST", "OPTIONS"],
 });
 
+await app.register(rateLimit, {
+  max: config.rateMax,
+  timeWindow: config.rateWindowMs,
+  // Only limit the write/compute-heavy API routes.
+  allowList: (req) => !req.url.startsWith("/api/scan") && !req.url.startsWith("/api/report"),
+});
+
 app.get("/api/health", async () => {
   const rpc = await rpcPool.health();
   return {
@@ -30,6 +39,7 @@ app.get("/api/health", async () => {
     rpc: { healthy: rpc.healthy, endpoint: rpc.endpoint, pool: rpcPool.endpoints.length },
     db: db.info(),
     intel: intel.summary(),
+    cache: scanCacheStats(),
     time: new Date().toISOString(),
   };
 });

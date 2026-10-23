@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { TxScenario } from "@/lib/types";
 import { verdictMeta } from "@/lib/theme";
 import { assembleScan } from "@/lib/securityChecks";
@@ -48,6 +48,7 @@ export function SigningOverlay({
 }) {
   const [showTech, setShowTech] = useState(false);
   const [confirmStep, setConfirmStep] = useState(false);
+  const dialogRef = useRef<HTMLDivElement>(null);
   // Live scan: the Program Scanner panel and its rules are computed here,
   // not read from static scenario data.
   const { scanners, firedRules } = useMemo(() => assembleScan(scenario), [scenario]);
@@ -55,11 +56,25 @@ export function SigningOverlay({
   const isDanger = scenario.verdict === "dangerous";
   const hardBlocked = firedRules.some((r) => r.hardBlock);
 
+  // Focus the dialog on mount and close on Escape (if closable).
+  useEffect(() => {
+    dialogRef.current?.focus();
+    if (!onClose) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
   return (
     <div
+      ref={dialogRef}
       role="dialog"
-      aria-label="Transaction review"
-      className={cx("glass animate-scale-in w-full max-w-md overflow-hidden ring-1", m.ring)}
+      aria-modal="true"
+      aria-label={`Transaction review — verdict ${scenario.verdict}`}
+      tabIndex={-1}
+      className={cx("glass animate-scale-in w-full max-w-md overflow-hidden ring-1 focus:outline-none", m.ring)}
     >
       {/* Verdict header strip */}
       <div className={cx("relative px-5 pt-5", m.bg)}>

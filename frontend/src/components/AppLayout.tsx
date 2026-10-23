@@ -98,7 +98,7 @@ export default function AppLayout() {
         )}
       </header>
 
-      <main key={loc.pathname} className="mx-auto max-w-7xl px-4 py-8 sm:px-6">
+      <main id="main" key={loc.pathname} className="mx-auto max-w-7xl px-4 py-8 sm:px-6">
         <Outlet />
       </main>
     </div>

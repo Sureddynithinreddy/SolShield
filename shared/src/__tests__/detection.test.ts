@@ -113,6 +113,28 @@ describe("instruction decoding", () => {
   });
 });
 
+describe("standing approvals", () => {
+  it("flags an unknown unlimited delegate as high risk", async () => {
+    const { assessApproval } = await import("../detection");
+    const r = assessApproval({ account: "a", mint: "m", delegate: "bad", delegatedAmount: 100, balance: 100 });
+    expect(r.risk).toBe("high");
+    expect(r.unlimited).toBe(true);
+  });
+  it("treats a known-protocol limited approval as low risk", async () => {
+    const { assessApproval } = await import("../detection");
+    const r = assessApproval({ account: "a", mint: "m", delegate: "ok", delegatedAmount: 10, balance: 100, knownDelegate: true });
+    expect(r.risk).toBe("low");
+  });
+  it("sorts high-risk approvals first", async () => {
+    const { assessApprovals } = await import("../detection");
+    const sorted = assessApprovals([
+      { account: "a", mint: "m", delegate: "ok", delegatedAmount: 5, balance: 100, knownDelegate: true },
+      { account: "b", mint: "m", delegate: "bad", delegatedAmount: 100, balance: 100 },
+    ]);
+    expect(sorted[0].risk).toBe("high");
+  });
+});
+
 describe("authority changes", () => {
   it("fires R-002 hard-block when the token-account owner changes", () => {
     const pre = [{ account: "ata", mint: "M", owner: "me", delegate: null, closeAuthority: null }];

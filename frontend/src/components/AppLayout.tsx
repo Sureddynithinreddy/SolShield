@@ -2,13 +2,14 @@ import { useState } from "react";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
 import { Logo } from "./Logo";
 import { cx } from "@/lib/format";
-import { Activity, Scan, History, Settings, Globe, Menu, X } from "./icons";
+import { Activity, Scan, History, Settings, Globe, Menu, X, Lock } from "./icons";
 import { SiteReputationPopup } from "./SiteReputationPopup";
 import { ConnectWalletButton } from "@/wallet/ConnectWalletButton";
 
 const nav = [
   { to: "/app", label: "Command Center", icon: <Activity width={18} height={18} />, end: true },
   { to: "/app/signing", label: "Live Signing", icon: <Scan width={18} height={18} /> },
+  { to: "/app/portfolio", label: "Approvals", icon: <Lock width={18} height={18} /> },
   { to: "/app/history", label: "History & Insights", icon: <History width={18} height={18} /> },
   { to: "/app/settings", label: "Settings", icon: <Settings width={18} height={18} /> },
 ];

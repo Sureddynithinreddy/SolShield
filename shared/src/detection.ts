@@ -376,6 +376,69 @@ export function checkAddressPoisoning(
   return undefined;
 }
 
+/* ---------------------- Standing delegate approvals (portfolio) ---------------------- */
+
+export interface DelegateApprovalAccount {
+  /** token account address */
+  account: string;
+  mint: string;
+  /** friendly token symbol if known */
+  symbol?: string;
+  /** the delegate that can move your tokens */
+  delegate: string;
+  /** amount the delegate is approved for (ui units) */
+  delegatedAmount: number;
+  /** the account's total balance (ui units) */
+  balance: number;
+  /** delegate is on the allow/known list */
+  knownDelegate?: boolean;
+}
+
+export type ApprovalRisk = "high" | "medium" | "low";
+
+export interface ApprovalAssessment extends DelegateApprovalAccount {
+  risk: ApprovalRisk;
+  reason: string;
+  /** approved for the entire balance (or effectively unlimited) */
+  unlimited: boolean;
+}
+
+/**
+ * Assesses a standing token delegate approval. The worst case is an unknown
+ * delegate approved for your full balance — the classic lingering-approval
+ * drainer vector (portfolio-wide approval monitoring, PRD Pro tier).
+ */
+export function assessApproval(a: DelegateApprovalAccount): ApprovalAssessment {
+  const unlimited = a.delegatedAmount >= a.balance && a.balance > 0;
+  let risk: ApprovalRisk;
+  let reason: string;
+
+  if (a.knownDelegate) {
+    risk = unlimited ? "medium" : "low";
+    reason = unlimited
+      ? "Full-balance approval to a known protocol. Revoke if you no longer use it."
+      : "Limited approval to a known protocol.";
+  } else if (unlimited) {
+    risk = "high";
+    reason = "An unknown address can move your entire balance of this token. Revoke now.";
+  } else if (a.delegatedAmount > 0) {
+    risk = "medium";
+    reason = "An unknown address holds a spending approval on this token.";
+  } else {
+    risk = "low";
+    reason = "No active approval.";
+  }
+
+  return { ...a, risk, reason, unlimited };
+}
+
+export function assessApprovals(accounts: DelegateApprovalAccount[]): ApprovalAssessment[] {
+  const order: Record<ApprovalRisk, number> = { high: 0, medium: 1, low: 2 };
+  return accounts
+    .map(assessApproval)
+    .sort((x, y) => order[x.risk] - order[y.risk]);
+}
+
 /* ---------------------- signMessage / SIWS ---------------------- */
 
 export interface MessageAnalysis {

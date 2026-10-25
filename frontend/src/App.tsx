@@ -6,6 +6,7 @@ import Dashboard from "@/pages/Dashboard";
 import SigningDemo from "@/pages/SigningDemo";
 import HistoryPage from "@/pages/HistoryPage";
 import SettingsPage from "@/pages/SettingsPage";
+import Portfolio from "@/pages/Portfolio";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 
 export default function App() {
@@ -24,6 +25,7 @@ export default function App() {
         <Route element={<AppLayout />}>
           <Route path="/app" element={<Dashboard />} />
           <Route path="/app/signing" element={<SigningDemo />} />
+          <Route path="/app/portfolio" element={<Portfolio />} />
           <Route path="/app/history" element={<HistoryPage />} />
           <Route path="/app/settings" element={<SettingsPage />} />
         </Route>

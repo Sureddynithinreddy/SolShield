@@ -112,6 +112,48 @@ export async function getTokenBalances(conn: Connection, owner: PublicKey): Prom
   return out.sort((a, b) => b.amount - a.amount);
 }
 
+export interface DelegatedAccount {
+  account: string;
+  mint: string;
+  delegate: string;
+  delegatedAmount: number;
+  balance: number;
+}
+
+/**
+ * Lists the wallet's token accounts that currently have an active delegate
+ * approval (a standing permission for someone else to move those tokens).
+ */
+export async function getDelegatedApprovals(
+  conn: Connection,
+  owner: PublicKey
+): Promise<DelegatedAccount[]> {
+  const out: DelegatedAccount[] = [];
+  for (const programId of [TOKEN_PROGRAM, TOKEN_2022_PROGRAM]) {
+    try {
+      const res = await conn.getParsedTokenAccountsByOwner(owner, {
+        programId: new PublicKey(programId),
+      });
+      for (const { pubkey, account } of res.value) {
+        const info = (account.data as ParsedAccountData).parsed?.info;
+        const delegate: string | undefined = info?.delegate;
+        const delegatedAmount = Number(info?.delegatedAmount?.uiAmount ?? 0);
+        if (!delegate || delegatedAmount <= 0) continue;
+        out.push({
+          account: pubkey.toBase58(),
+          mint: info.mint,
+          delegate,
+          delegatedAmount,
+          balance: Number(info?.tokenAmount?.uiAmount ?? 0),
+        });
+      }
+    } catch {
+      /* ignore this program on error */
+    }
+  }
+  return out;
+}
+
 export async function getWalletSnapshot(conn: Connection, owner: PublicKey): Promise<WalletSnapshot> {
   const [solBalance, tokens] = await Promise.all([
     getSolBalance(conn, owner),

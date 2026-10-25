@@ -2,7 +2,7 @@ import { useState } from "react";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
 import { Logo } from "./Logo";
 import { cx } from "@/lib/format";
-import { Activity, Scan, History, Settings, Globe, Menu, X, Lock } from "./icons";
+import { Activity, Scan, History, Settings, Globe, Menu, X, Lock, ShieldCheck } from "./icons";
 import { SiteReputationPopup } from "./SiteReputationPopup";
 import { ConnectWalletButton } from "@/wallet/ConnectWalletButton";
 
@@ -12,6 +12,7 @@ const nav = [
   { to: "/app/portfolio", label: "Approvals", icon: <Lock width={18} height={18} /> },
   { to: "/app/history", label: "History & Insights", icon: <History width={18} height={18} /> },
   { to: "/app/settings", label: "Settings", icon: <Settings width={18} height={18} /> },
+  { to: "/app/admin", label: "Admin", icon: <ShieldCheck width={18} height={18} /> },
 ];
 
 export default function AppLayout() {

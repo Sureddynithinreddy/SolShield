@@ -2,6 +2,7 @@ import type { FastifyInstance } from "fastify";
 import { db, type ReportDoc } from "../db.js";
 import { sha256 } from "../hash.js";
 import { intel } from "../intel/store.js";
+import { promoteToIntel } from "../intel/promote.js";
 
 interface ReportBody {
   kind: "address" | "domain";
@@ -100,37 +101,4 @@ export async function registerReportRoutes(app: FastifyInstance) {
       })),
     });
   });
-}
-
-/** Promote a confirmed report into the appropriate intel collection. */
-async function promoteToIntel(kind: "address" | "domain", value: string): Promise<void> {
-  if (!db.connected) return;
-  if (kind === "address") {
-    await db.intelAddresses.updateOne(
-      { address: value },
-      {
-        $setOnInsert: {
-          address: value,
-          category: "drainer",
-          label: "Community-reported",
-          source: "community",
-          addedAt: new Date(),
-        },
-      },
-      { upsert: true }
-    );
-  } else {
-    await db.intelDomains.updateOne(
-      { domain: value },
-      {
-        $setOnInsert: {
-          domain: value,
-          category: "phishing",
-          source: "community",
-          addedAt: new Date(),
-        },
-      },
-      { upsert: true }
-    );
-  }
 }

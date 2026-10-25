@@ -7,6 +7,7 @@ import SigningDemo from "@/pages/SigningDemo";
 import HistoryPage from "@/pages/HistoryPage";
 import SettingsPage from "@/pages/SettingsPage";
 import Portfolio from "@/pages/Portfolio";
+import Admin from "@/pages/Admin";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 
 export default function App() {
@@ -28,6 +29,7 @@ export default function App() {
           <Route path="/app/portfolio" element={<Portfolio />} />
           <Route path="/app/history" element={<HistoryPage />} />
           <Route path="/app/settings" element={<SettingsPage />} />
+          <Route path="/app/admin" element={<Admin />} />
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

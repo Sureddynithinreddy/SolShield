@@ -89,6 +89,21 @@ describe("POST /api/intel/refresh auth", () => {
   });
 });
 
+describe("admin routes auth", () => {
+  it("401s on /api/admin/reports without the admin key", async () => {
+    const res = await app.inject({ method: "GET", url: "/api/admin/reports" });
+    expect(res.statusCode).toBe(401);
+  });
+  it("401s on /api/admin/reports/action without the admin key", async () => {
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/admin/reports/action",
+      payload: { kind: "domain", value: "x", action: "confirm" },
+    });
+    expect(res.statusCode).toBe(401);
+  });
+});
+
 describe("resolveDeployedDaysAgo", () => {
   it("computes days-ago from a block time", async () => {
     const { resolveDeployedDaysAgo } = await import("../chain.js");

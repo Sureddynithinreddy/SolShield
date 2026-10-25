@@ -114,6 +114,58 @@ export async function fetchStats(): Promise<BackendStats | null> {
   }
 }
 
+/* ---------------------- Admin ---------------------- */
+
+export interface AdminReport {
+  kind: "address" | "domain";
+  value: string;
+  reason: string;
+  status: "pending" | "confirmed" | "rejected";
+  confirmations: number;
+  createdAt: string;
+}
+
+export interface AdminReportsResponse {
+  ok: boolean;
+  available: boolean;
+  counts?: { pending: number; confirmed: number; rejected: number };
+  reports: AdminReport[];
+  error?: string;
+}
+
+export async function adminGetReports(adminKey: string): Promise<AdminReportsResponse> {
+  if (!API_URL) return { ok: false, available: false, reports: [], error: "No backend configured." };
+  try {
+    const res = await fetch(`${API_URL}/api/admin/reports`, {
+      headers: { "x-admin-key": adminKey },
+    });
+    const j = await res.json();
+    if (!res.ok || !j?.ok) return { ok: false, available: false, reports: [], error: j?.error ?? `Failed (${res.status})` };
+    return j as AdminReportsResponse;
+  } catch {
+    return { ok: false, available: false, reports: [], error: "Could not reach the backend." };
+  }
+}
+
+export async function adminReportAction(
+  adminKey: string,
+  input: { kind: "address" | "domain"; value: string; action: "confirm" | "reject" }
+): Promise<{ ok: boolean; status?: string; error?: string }> {
+  if (!API_URL) return { ok: false, error: "No backend configured." };
+  try {
+    const res = await fetch(`${API_URL}/api/admin/reports/action`, {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-admin-key": adminKey },
+      body: JSON.stringify(input),
+    });
+    const j = await res.json();
+    if (!res.ok || !j?.ok) return { ok: false, error: j?.error ?? `Failed (${res.status})` };
+    return { ok: true, status: j.status };
+  } catch {
+    return { ok: false, error: "Could not reach the backend." };
+  }
+}
+
 /** Submit a community scam report. Returns the new status, or an error. */
 export async function submitReport(input: {
   kind: "address" | "domain";

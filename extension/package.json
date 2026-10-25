@@ -1,0 +1,16 @@
+{
+  "name": "solshield-extension",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "description": "SolShield browser extension (MV3) — intercepts Solana signing requests and scans them before they reach your wallet.",
+  "scripts": {
+    "build": "tsc --noEmit && node build.mjs",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/chrome": "^0.0.270",
+    "esbuild": "^0.21.5",
+    "typescript": "^5.6.2"
+  }
+}

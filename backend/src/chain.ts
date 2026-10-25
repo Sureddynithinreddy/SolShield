@@ -24,6 +24,30 @@ export function labelForProgram(id: string): string {
   return intel.programAllow(id)?.name ?? PROGRAM_LABELS[id] ?? `${id.slice(0, 4)}…${id.slice(-4)}`;
 }
 
+/** Cache deploy-age per program (slot → days) so we don't re-query every scan. */
+const deployAgeCache = new Map<string, { daysAgo: number | null; at: number }>();
+const DEPLOY_AGE_TTL = 6 * 60 * 60 * 1000; // 6h
+
+/**
+ * Resolve how many days ago a program was last deployed, from its
+ * ProgramData account's last-deploy slot via getBlockTime. Returns null when
+ * it can't be determined (non-upgradeable, RPC error, missing block time).
+ */
+export async function resolveDeployedDaysAgo(
+  conn: Connection,
+  lastDeploySlot: number | null | undefined
+): Promise<number | null> {
+  if (lastDeploySlot == null) return null;
+  try {
+    const blockTime = await conn.getBlockTime(lastDeploySlot);
+    if (blockTime == null) return null;
+    const days = (Date.now() / 1000 - blockTime) / 86_400;
+    return Math.max(0, Math.round(days));
+  } catch {
+    return null;
+  }
+}
+
 export async function getProgramInfo(conn: Connection, programId: string): Promise<ProgramMeta> {
   const core = CORE_PROGRAMS.has(programId);
   if (core) {
@@ -43,6 +67,7 @@ export async function getProgramInfo(conn: Connection, programId: string): Promi
   const allow = intel.programAllow(programId);
 
   let upgradeAuthority: ProgramMeta["upgradeAuthority"] = "none";
+  let deployedDaysAgo: number | null = null;
   try {
     const acc = await conn.getParsedAccountInfo(new PublicKey(programId));
     const value = acc.value;
@@ -52,8 +77,18 @@ export async function getProgramInfo(conn: Connection, programId: string): Promi
       if (programDataAddr) {
         const pd = await conn.getParsedAccountInfo(new PublicKey(programDataAddr));
         const pdData = pd.value?.data as ParsedAccountData | undefined;
-        const authority = pdData?.parsed?.info?.authority;
+        const pdInfo = pdData?.parsed?.info;
+        const authority = pdInfo?.authority;
         upgradeAuthority = authority ? "single-unknown" : "immutable";
+
+        // Resolve the real deploy age from the last-deploy slot (cached).
+        const cached = deployAgeCache.get(programId);
+        if (cached && Date.now() - cached.at < DEPLOY_AGE_TTL) {
+          deployedDaysAgo = cached.daysAgo;
+        } else {
+          deployedDaysAgo = await resolveDeployedDaysAgo(conn, pdInfo?.slot);
+          deployAgeCache.set(programId, { daysAgo: deployedDaysAgo, at: Date.now() });
+        }
       }
     } else if (value && value.executable) {
       upgradeAuthority = "immutable";
@@ -67,7 +102,8 @@ export async function getProgramInfo(conn: Connection, programId: string): Promi
     name: labelForProgram(programId),
     core: false,
     verified: !!allow?.verified,
-    deployedDaysAgo: blocked ? 1 : null,
+    // Blocklisted programs are treated as brand-new/high-risk regardless.
+    deployedDaysAgo: blocked ? 1 : deployedDaysAgo,
     upgradeAuthority: blocked ? "single-unknown" : upgradeAuthority,
     receivesFunds: true,
     viaCpi: false,

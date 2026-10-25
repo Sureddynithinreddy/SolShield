@@ -88,3 +88,20 @@ describe("POST /api/intel/refresh auth", () => {
     expect(res.statusCode).toBe(401);
   });
 });
+
+describe("resolveDeployedDaysAgo", () => {
+  it("computes days-ago from a block time", async () => {
+    const { resolveDeployedDaysAgo } = await import("../chain.js");
+    // Fake connection: block time = 10 days ago.
+    const tenDaysAgo = Math.floor(Date.now() / 1000) - 10 * 86400;
+    const conn = { getBlockTime: async () => tenDaysAgo } as unknown as import("@solana/web3.js").Connection;
+    expect(await resolveDeployedDaysAgo(conn, 123)).toBe(10);
+  });
+
+  it("returns null for a missing slot", async () => {
+    const { resolveDeployedDaysAgo } = await import("../chain.js");
+    const conn = { getBlockTime: async () => null } as unknown as import("@solana/web3.js").Connection;
+    expect(await resolveDeployedDaysAgo(conn, null)).toBeNull();
+    expect(await resolveDeployedDaysAgo(conn, 5)).toBeNull();
+  });
+});

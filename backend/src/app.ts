@@ -9,6 +9,7 @@ import { registerStatsRoutes } from "./routes/stats.js";
 import { registerReportRoutes } from "./routes/report.js";
 import { registerIntelRoutes } from "./routes/intel.js";
 import { registerAdminRoutes } from "./routes/admin.js";
+import { registerSettingsRoutes } from "./routes/settings.js";
 import { intel } from "./intel/store.js";
 import { db } from "./db.js";
 
@@ -84,6 +85,7 @@ export async function buildApp(opts: { logger?: boolean } = {}): Promise<Fastify
   await registerReportRoutes(app);
   await registerIntelRoutes(app);
   await registerAdminRoutes(app);
+  await registerSettingsRoutes(app);
 
   return app;
 }

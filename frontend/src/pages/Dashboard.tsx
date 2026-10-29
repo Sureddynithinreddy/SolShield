@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { scanTrend, threatBreakdown } from "@/lib/mock";
 import { StatCard, Card, Divider } from "@/components/ui";
 import { cx, shortAddr, usd } from "@/lib/format";
 import { useWalletData } from "@/lib/useWalletData";
@@ -37,9 +36,10 @@ export default function Dashboard() {
     };
   }, []);
 
-  // Use real backend analytics when available, else the labelled sample data.
-  const liveTrend = stats?.trend?.length ? stats.trend : scanTrend;
-  const liveThreats = stats?.threatBreakdown?.length ? stats.threatBreakdown : threatBreakdown;
+  // Real backend analytics only — no fabricated fallback. Empty when the
+  // backend has no data yet (or isn't configured).
+  const liveTrend = stats?.trend ?? [];
+  const liveThreats = stats?.threatBreakdown ?? [];
   const statsAreReal = !!stats;
 
   const tokenCount = snapshot?.tokens.length ?? 0;
@@ -163,6 +163,11 @@ export default function Dashboard() {
                 <h3 className="text-sm font-semibold">Threat intel</h3>
               </div>
               <DataTag real={statsAreReal} />
+              {liveThreats.length === 0 ? (
+                <p className="mt-4 text-xs text-slate-500">
+                  No threat data yet. Blocked scans recorded by the backend will appear here.
+                </p>
+              ) : (
               <div className="mt-3 space-y-3">
                 {liveThreats.map((t) => {
                   const max = Math.max(1, ...liveThreats.map((x) => x.count));
@@ -186,10 +191,11 @@ export default function Dashboard() {
                   );
                 })}
               </div>
+              )}
             </Card>
           </div>
 
-          {/* Scanner health (live engines) + sample activity chart */}
+          {/* Scanner health (live engines) + scan-activity chart */}
           <div className="grid gap-6 lg:grid-cols-3">
             <Card className="lg:col-span-2">
               <div className="mb-1 flex items-center justify-between">
@@ -200,9 +206,15 @@ export default function Dashboard() {
                 <Legend />
               </div>
               <DataTag real={statsAreReal} />
-              <div className="mt-3">
-                <ScanChart trend={liveTrend} />
-              </div>
+              {liveTrend.length === 0 ? (
+                <p className="mt-6 py-10 text-center text-xs text-slate-500">
+                  No scan activity yet. Transactions scanned through the backend will chart here.
+                </p>
+              ) : (
+                <div className="mt-3">
+                  <ScanChart trend={liveTrend} />
+                </div>
+              )}
             </Card>
 
             <Card>
@@ -414,7 +426,7 @@ function DataTag({ real }: { real: boolean }) {
         real ? "border-safe/30 bg-safe/10 text-safe" : "border-white/10 bg-white/[0.03] text-slate-500"
       )}
     >
-      {real ? "Live backend data" : "Sample data"}
+      {real ? "Live backend data" : "No data yet"}
     </span>
   );
 }

@@ -49,6 +49,29 @@ export interface IntelDomainDoc {
   addedAt: Date;
 }
 
+export interface UserListEntry {
+  value: string;
+  label: string;
+  kind: "domain" | "program" | "address";
+  type: "allow" | "block";
+}
+
+export interface UserRuleEntry {
+  id: string;
+  text: string;
+  enabled: boolean;
+  severity: "info" | "low" | "medium" | "high" | "critical";
+}
+
+/** Per-wallet user settings (keyed by a hash of the wallet address). */
+export interface SettingsDoc {
+  ownerHash: string;
+  strictness: "relaxed" | "balanced" | "strict";
+  lists: UserListEntry[];
+  rules: UserRuleEntry[];
+  updatedAt: Date;
+}
+
 class Database {
   private client: MongoClient | null = null;
   private db: Db | null = null;
@@ -84,6 +107,7 @@ class Database {
       this.reports.createIndex({ kind: 1, value: 1 }),
       this.intelAddresses.createIndex({ address: 1 }, { unique: true }),
       this.intelDomains.createIndex({ domain: 1 }, { unique: true }),
+      this.settings.createIndex({ ownerHash: 1 }, { unique: true }),
     ]).catch(() => {
       /* index creation is best-effort */
     });
@@ -113,6 +137,9 @@ class Database {
   }
   get intelDomains() {
     return this.coll<IntelDomainDoc>("intel_domains");
+  }
+  get settings() {
+    return this.coll<SettingsDoc>("settings");
   }
 
   async close() {

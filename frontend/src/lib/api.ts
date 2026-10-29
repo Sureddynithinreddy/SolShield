@@ -166,6 +166,85 @@ export async function adminReportAction(
   }
 }
 
+/* ---------------------- User settings + rule pack ---------------------- */
+
+export interface UserListEntry {
+  value: string;
+  label: string;
+  kind: "domain" | "program" | "address";
+  type: "allow" | "block";
+}
+
+export interface UserRuleEntry {
+  id: string;
+  text: string;
+  enabled: boolean;
+  severity: "info" | "low" | "medium" | "high" | "critical";
+}
+
+export interface UserSettings {
+  strictness: "relaxed" | "balanced" | "strict";
+  lists: UserListEntry[];
+  rules: UserRuleEntry[];
+}
+
+export interface RuleDef {
+  id: string;
+  title: string;
+  description: string;
+  severity: "info" | "low" | "medium" | "high" | "critical";
+  source: "program" | "wallet" | "token" | "simulator";
+  hardBlock?: boolean;
+}
+
+/** The authoritative built-in rule pack from the backend (null if no backend). */
+export async function fetchRulePack(): Promise<{ version: string; rules: RuleDef[] } | null> {
+  if (!API_URL) return null;
+  try {
+    const res = await fetch(`${API_URL}/api/rules`);
+    if (!res.ok) return null;
+    const j = await res.json();
+    if (!j?.ok) return null;
+    return { version: j.version, rules: j.rules as RuleDef[] };
+  } catch {
+    return null;
+  }
+}
+
+/** Load a wallet's persisted settings (null if no backend). */
+export async function getSettings(owner: string): Promise<{ persisted: boolean; settings: UserSettings } | null> {
+  if (!API_URL) return null;
+  try {
+    const res = await fetch(`${API_URL}/api/settings?owner=${encodeURIComponent(owner)}`);
+    if (!res.ok) return null;
+    const j = await res.json();
+    if (!j?.ok) return null;
+    return { persisted: j.persisted, settings: j.settings as UserSettings };
+  } catch {
+    return null;
+  }
+}
+
+/** Save a wallet's settings. Returns ok/error. */
+export async function saveSettings(
+  owner: string,
+  settings: UserSettings
+): Promise<{ ok: boolean; error?: string }> {
+  if (!API_URL) return { ok: false, error: "No backend configured." };
+  try {
+    const res = await fetch(`${API_URL}/api/settings`, {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ owner, ...settings }),
+    });
+    const j = await res.json();
+    if (!res.ok || !j?.ok) return { ok: false, error: j?.error ?? `Failed (${res.status})` };
+    return { ok: true };
+  } catch {
+    return { ok: false, error: "Could not reach the backend." };
+  }
+}
+
 /** Submit a community scam report. Returns the new status, or an error. */
 export async function submitReport(input: {
   kind: "address" | "domain";

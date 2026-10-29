@@ -1,6 +1,5 @@
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import { useWallet, useConnection } from "@solana/wallet-adapter-react";
-import { scenarios } from "@/lib/mock";
 import type { TxScenario } from "@/lib/types";
 import { SigningOverlay } from "@/components/SigningOverlay";
 import { Card, Divider } from "@/components/ui";
@@ -9,37 +8,12 @@ import { ConnectWalletButton } from "@/wallet/ConnectWalletButton";
 import { cx, shortAddr } from "@/lib/format";
 import { scanTransaction, backendConfigured } from "@/lib/api";
 import { activeCluster } from "@/lib/solana";
-import {
-  Scan,
-  Wallet,
-  Code,
-  Coin,
-  Activity,
-  Check,
-  Spinner,
-  Globe,
-  ShieldCheck,
-  X,
-  Zap,
-} from "@/components/icons";
-
-type Phase = "idle" | "scanning" | "overlay" | "result";
-type Mode = "examples" | "real";
-
-const scanSteps = [
-  { icon: <Code width={14} height={14} />, label: "Decoding transaction" },
-  { icon: <Code width={14} height={14} />, label: "Program scanner" },
-  { icon: <Wallet width={14} height={14} />, label: "Wallet scanner" },
-  { icon: <Coin width={14} height={14} />, label: "Token scanner" },
-  { icon: <Activity width={14} height={14} />, label: "Simulating outcome" },
-  { icon: <ShieldCheck width={14} height={14} />, label: "Scoring & verdict" },
-];
+import { Scan, Check, Spinner, ShieldCheck, X, Zap } from "@/components/icons";
 
 export default function SigningDemo() {
   const { connected, publicKey, wallet } = useWallet();
-  const [mode, setMode] = useState<Mode>("examples");
   const signerLabel =
-    connected && publicKey ? shortAddr(publicKey.toBase58(), 4, 4) : "Demo wallet (7Hm4…xQ2v)";
+    connected && publicKey ? shortAddr(publicKey.toBase58(), 4, 4) : "No wallet connected";
 
   return (
     <div>
@@ -47,7 +21,7 @@ export default function SigningDemo() {
         <PageHeading
           icon={<Scan width={22} height={22} />}
           title="Transaction Scanner"
-          sub="Run a curated example, or paste a real Solana transaction to scan it live."
+          sub="Paste a real unsigned Solana transaction and SolShield scans it live before you sign."
         />
         <div className="flex items-center gap-3">
           <div className="hidden text-right sm:block">
@@ -61,196 +35,10 @@ export default function SigningDemo() {
         </div>
       </div>
 
-      {/* Mode toggle */}
-      <div className="mt-5 flex flex-wrap gap-1.5">
-        <ModeTab active={mode === "examples"} onClick={() => setMode("examples")}>
-          <ShieldCheck width={15} height={15} /> Example scenarios
-        </ModeTab>
-        <ModeTab active={mode === "real"} onClick={() => setMode("real")}>
-          <Zap width={15} height={15} /> Scan a real transaction
-        </ModeTab>
-      </div>
-
-      {mode === "examples" ? <ExamplesMode /> : <RealScanMode />}
+      <RealScanMode />
     </div>
   );
 }
-
-function ModeTab({
-  active,
-  onClick,
-  children,
-}: {
-  active: boolean;
-  onClick: () => void;
-  children: React.ReactNode;
-}) {
-  return (
-    <button
-      onClick={onClick}
-      className={cx(
-        "inline-flex items-center gap-2 rounded-lg px-3.5 py-2 text-sm font-medium transition focus-ring",
-        active
-          ? "bg-white/[0.08] text-white shadow-[inset_0_0_0_1px_rgba(34,211,238,0.25)]"
-          : "text-slate-400 hover:bg-white/[0.03]"
-      )}
-    >
-      {children}
-    </button>
-  );
-}
-
-/* ============================ Examples mode ============================ */
-
-function ExamplesMode() {
-  const { connected, publicKey } = useWallet();
-  const [selected, setSelected] = useState<TxScenario>(scenarios[2]);
-  const [phase, setPhase] = useState<Phase>("idle");
-  const [scanIdx, setScanIdx] = useState(0);
-  const [decision, setDecision] = useState<"allowed" | "blocked" | "overrode" | null>(null);
-  const timers = useRef<number[]>([]);
-
-  const clearTimers = () => {
-    timers.current.forEach((t) => window.clearTimeout(t));
-    timers.current = [];
-  };
-  useEffect(() => () => clearTimers(), []);
-
-  const startScan = () => {
-    clearTimers();
-    setDecision(null);
-    setScanIdx(0);
-    setPhase("scanning");
-    const per = 230;
-    scanSteps.forEach((_, i) => {
-      timers.current.push(window.setTimeout(() => setScanIdx(i + 1), per * (i + 1)));
-    });
-    timers.current.push(window.setTimeout(() => setPhase("overlay"), per * scanSteps.length + 250));
-  };
-
-  const reset = () => {
-    clearTimers();
-    setPhase("idle");
-    setDecision(null);
-    setScanIdx(0);
-  };
-
-  const onDecision = (d: "allowed" | "blocked" | "overrode") => {
-    setDecision(d);
-    setPhase("result");
-  };
-
-  return (
-    <div className="mt-6 grid gap-6 lg:grid-cols-[320px_1fr]">
-      <div className="space-y-3">
-        <span className="label-cap">
-          Example scenarios <span className="text-slate-600">· illustrative</span>
-        </span>
-        {scenarios.map((s) => {
-          const active = selected.id === s.id;
-          return (
-            <button
-              key={s.id}
-              onClick={() => {
-                setSelected(s);
-                reset();
-              }}
-              className={cx(
-                "w-full rounded-xl border p-4 text-left transition focus-ring",
-                active
-                  ? "border-cyan/50 bg-cyan/[0.06] shadow-glow"
-                  : "border-white/10 bg-white/[0.02] hover:border-white/20"
-              )}
-            >
-              <div className="flex items-center justify-between">
-                <span className="flex items-center gap-2">
-                  <span className="text-lg">{s.dappFavicon}</span>
-                  <span className="text-sm font-semibold text-white">{s.dappName}</span>
-                </span>
-                <VerdictPill verdict={s.verdict} size="sm" />
-              </div>
-              <div className="mono mt-1 text-slate-500">{s.dappDomain}</div>
-            </button>
-          );
-        })}
-
-        <Card className="mt-4">
-          <div className="flex items-center gap-2 text-sm font-semibold text-white">
-            <Globe width={16} height={16} className="text-cyan" />
-            How to read it
-          </div>
-          <Divider className="my-3" />
-          <ul className="space-y-2 text-xs text-slate-400">
-            <li className="flex items-center gap-2">
-              <span className="h-2 w-2 rounded-full bg-safe" /> 0–29 Safe — Allow
-            </li>
-            <li className="flex items-center gap-2">
-              <span className="h-2 w-2 rounded-full bg-caution" /> 30–59 Caution — confirm
-            </li>
-            <li className="flex items-center gap-2">
-              <span className="h-2 w-2 rounded-full bg-danger" /> 60–100 Dangerous — Block
-            </li>
-          </ul>
-        </Card>
-      </div>
-
-      <div className="relative">
-        <BrowserFrame domain={selected.dappDomain}>
-          <div className="relative grid min-h-[460px] place-items-center bg-gradient-to-br from-ink-900 to-ink-850 p-6">
-            <div className="pointer-events-none absolute inset-0 bg-grid opacity-40" />
-            <div className="relative text-center">
-              <div className="mb-4 text-5xl">{selected.dappFavicon}</div>
-              <h3 className="text-xl font-bold text-white">{selected.dappName}</h3>
-              <p className="mt-1 text-sm text-slate-400">
-                {selected.verdict === "dangerous"
-                  ? "Claim your exclusive airdrop now!"
-                  : selected.verdict === "caution"
-                  ? "Mint your GlowPass — limited supply"
-                  : "Swap tokens at the best rate"}
-              </p>
-              {phase === "idle" && (
-                <button className="btn-primary mt-6" onClick={startScan}>
-                  <Wallet width={16} height={16} />
-                  {selected.requestType === "signMessage" ? "Sign message" : "Request signature"}
-                </button>
-              )}
-              {phase !== "idle" && (
-                <button className="btn-ghost mt-6" onClick={reset}>
-                  Reset demo
-                </button>
-              )}
-            </div>
-
-            {phase === "scanning" && (
-              <div className="absolute inset-0 z-10 grid place-items-center bg-ink-950/70 backdrop-blur-sm">
-                <ScanProgress idx={scanIdx} />
-              </div>
-            )}
-
-            {phase === "overlay" && (
-              <div className="absolute inset-0 z-20 grid place-items-center overflow-y-auto bg-ink-950/70 p-4 backdrop-blur-sm">
-                <SigningOverlay
-                  scenario={selected}
-                  onDecision={onDecision}
-                  onClose={reset}
-                  signerAddress={connected && publicKey ? publicKey.toBase58() : undefined}
-                />
-              </div>
-            )}
-
-            {phase === "result" && decision && (
-              <div className="absolute inset-0 z-20 grid place-items-center bg-ink-950/80 p-4 backdrop-blur-sm">
-                <ResultCard decision={decision} scenario={selected} onReset={reset} />
-              </div>
-            )}
-          </div>
-        </BrowserFrame>
-      </div>
-    </div>
-  );
-}
-
-/* ============================ Real scan mode ============================ */
 
 function RealScanMode() {
   const { connection } = useConnection();
@@ -431,69 +219,6 @@ function RealScanMode() {
 }
 
 /* ============================ shared pieces ============================ */
-
-function BrowserFrame({ domain, children }: { domain: string; children: React.ReactNode }) {
-  return (
-    <div className="overflow-hidden rounded-2xl border border-white/[0.08] bg-ink-900 shadow-card">
-      <div className="flex items-center gap-3 border-b border-white/[0.06] bg-ink-850 px-4 py-2.5">
-        <div className="flex gap-1.5">
-          <span className="h-3 w-3 rounded-full bg-danger/70" />
-          <span className="h-3 w-3 rounded-full bg-caution/70" />
-          <span className="h-3 w-3 rounded-full bg-safe/70" />
-        </div>
-        <div className="mono flex flex-1 items-center gap-2 rounded-md bg-black/30 px-3 py-1 text-xs text-slate-400">
-          <Globe width={12} height={12} />
-          https://{domain}
-        </div>
-        <span className="chip border-cyan/30 bg-cyan/10 text-[0.62rem] text-cyan">
-          <ShieldCheck width={11} height={11} />
-          SolShield on
-        </span>
-      </div>
-      {children}
-    </div>
-  );
-}
-
-function ScanProgress({ idx }: { idx: number }) {
-  return (
-    <div className="glass w-72 p-5">
-      <div className="flex items-center gap-2 text-sm font-semibold text-white">
-        <Spinner width={16} height={16} className="text-cyan" />
-        Analyzing transaction…
-      </div>
-      <div className="mt-4 space-y-2">
-        {scanSteps.map((s, i) => {
-          const done = i < idx;
-          const active = i === idx;
-          return (
-            <div
-              key={s.label}
-              className={cx(
-                "flex items-center gap-2.5 text-xs transition",
-                done ? "text-safe" : active ? "text-slate-200" : "text-slate-600"
-              )}
-            >
-              <span
-                className={cx(
-                  "grid h-5 w-5 place-items-center rounded-full ring-1",
-                  done
-                    ? "bg-safe/15 text-safe ring-safe/40"
-                    : active
-                    ? "bg-cyan/15 text-cyan ring-cyan/40"
-                    : "ring-white/10"
-                )}
-              >
-                {done ? <Check width={12} height={12} /> : active ? <Spinner width={12} height={12} /> : s.icon}
-              </span>
-              {s.label}
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
 
 function ResultCard({
   decision,

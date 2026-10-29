@@ -49,17 +49,17 @@ export default function AppLayout() {
           </nav>
 
           <div className="ml-auto flex items-center gap-2">
-            {/* Site reputation badge (toolbar) */}
+            {/* Live domain-reputation checker */}
             <div className="relative">
               <button
                 onClick={() => setRepOpen((v) => !v)}
-                className="chip border-safe/40 bg-safe/10 text-safe focus-ring"
+                className="chip border-cyan/40 bg-cyan/10 text-cyan focus-ring"
                 aria-haspopup="dialog"
                 aria-expanded={repOpen}
+                aria-label="Check a domain's reputation"
               >
                 <Globe width={14} height={14} />
-                <span className="hidden sm:inline">jup.ag</span>
-                <span className="font-semibold">98</span>
+                <span className="hidden sm:inline">Check domain</span>
               </button>
               {repOpen && <SiteReputationPopup onClose={() => setRepOpen(false)} />}
             </div>

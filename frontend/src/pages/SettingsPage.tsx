@@ -1,9 +1,9 @@
-import { useState } from "react";
-import { listEntries, rulePack, userRules as seedRules } from "@/lib/mock";
-import type { Strictness, UserRule } from "@/lib/types";
+import { useEffect, useState } from "react";
 import { Card, Divider, Toggle } from "@/components/ui";
 import { SeverityTag } from "@/components/Badges";
 import { ReportForm } from "@/components/ReportForm";
+import { useSettings, type SaveState } from "@/lib/useSettings";
+import { fetchRulePack, type RuleDef, type UserListEntry, type UserRuleEntry } from "@/lib/api";
 import { cx } from "@/lib/format";
 import {
   Settings,
@@ -19,9 +19,11 @@ import {
   Eye,
   AlertTriangle,
   Users,
+  Spinner,
 } from "@/components/icons";
 
 type Tab = "general" | "lists" | "rules" | "privacy" | "community";
+type Strictness = "relaxed" | "balanced" | "strict";
 
 const tabs: { id: Tab; label: string; icon: JSX.Element }[] = [
   { id: "general", label: "General", icon: <Settings width={16} height={16} /> },
@@ -33,19 +35,23 @@ const tabs: { id: Tab; label: string; icon: JSX.Element }[] = [
 
 export default function SettingsPage() {
   const [tab, setTab] = useState<Tab>("general");
+  const settings = useSettings();
 
   return (
     <div className="space-y-6">
-      <div className="flex items-start gap-3">
-        <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-gradient-to-br from-cyan/20 to-violet/20 text-cyan ring-1 ring-white/10">
-          <Settings width={22} height={22} />
-        </span>
-        <div>
-          <h1 className="text-2xl font-extrabold tracking-tight text-white">Settings</h1>
-          <p className="mt-0.5 text-sm text-slate-400">
-            Tune protection, manage lists and control your privacy.
-          </p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="flex items-start gap-3">
+          <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-gradient-to-br from-cyan/20 to-violet/20 text-cyan ring-1 ring-white/10">
+            <Settings width={22} height={22} />
+          </span>
+          <div>
+            <h1 className="text-2xl font-extrabold tracking-tight text-white">Settings</h1>
+            <p className="mt-0.5 text-sm text-slate-400">
+              Tune protection, manage lists and control your privacy.
+            </p>
+          </div>
         </div>
+        <SaveBadge persists={settings.persists} state={settings.saveState} />
       </div>
 
       <div className="flex flex-wrap gap-1.5">
@@ -66,13 +72,41 @@ export default function SettingsPage() {
         ))}
       </div>
 
-      {tab === "general" && <GeneralTab />}
-      {tab === "lists" && <ListsTab />}
-      {tab === "rules" && <RulesTab />}
+      {tab === "general" && (
+        <GeneralTab
+          strictness={settings.settings.strictness}
+          onStrictness={settings.setStrictness}
+        />
+      )}
+      {tab === "lists" && (
+        <ListsTab lists={settings.settings.lists} loading={settings.loading} onChange={settings.setLists} />
+      )}
+      {tab === "rules" && (
+        <RulesTab rules={settings.settings.rules} loading={settings.loading} onChange={settings.setRules} />
+      )}
       {tab === "community" && <CommunityTab />}
       {tab === "privacy" && <PrivacyTab />}
     </div>
   );
+}
+
+function SaveBadge({ persists, state }: { persists: boolean; state: SaveState }) {
+  if (!persists) {
+    return (
+      <span className="chip border-white/10 bg-white/5 text-[0.62rem] text-slate-400">
+        Connect a wallet to sync settings
+      </span>
+    );
+  }
+  const map: Record<SaveState, { cls: string; label: string }> = {
+    idle: { cls: "border-white/10 bg-white/5 text-slate-400", label: "Synced to your wallet" },
+    saving: { cls: "border-cyan/40 bg-cyan/10 text-cyan", label: "Saving…" },
+    saved: { cls: "border-safe/40 bg-safe/10 text-safe", label: "Saved" },
+    error: { cls: "border-danger/40 bg-danger/10 text-danger", label: "Save failed" },
+    local: { cls: "border-white/10 bg-white/5 text-slate-400", label: "Local only" },
+  };
+  const m = map[state];
+  return <span className={cx("chip text-[0.62rem]", m.cls)}>{m.label}</span>;
 }
 
 /* ------------------------------ Community ------------------------------ */
@@ -117,8 +151,13 @@ const strictnessInfo: Record<Strictness, { label: string; desc: string }> = {
   strict: { label: "Strict", desc: "Blocks anything unusual. Dangerous verdicts can't be overridden." },
 };
 
-function GeneralTab() {
-  const [strictness, setStrictness] = useState<Strictness>("balanced");
+function GeneralTab({
+  strictness,
+  onStrictness,
+}: {
+  strictness: Strictness;
+  onStrictness: (s: Strictness) => void;
+}) {
   const [overrideAllowed, setOverrideAllowed] = useState(true);
   const [outflowThreshold, setOutflowThreshold] = useState(5);
 
@@ -133,7 +172,7 @@ function GeneralTab() {
             return (
               <button
                 key={s}
-                onClick={() => setStrictness(s)}
+                onClick={() => onStrictness(s)}
                 className={cx(
                   "flex w-full items-center justify-between rounded-xl border p-3.5 text-left transition focus-ring",
                   active ? "border-cyan/50 bg-cyan/[0.06]" : "border-white/10 bg-white/[0.02] hover:border-white/20"
@@ -212,14 +251,28 @@ const kindIcon: Record<string, JSX.Element> = {
   address: <Wallet width={14} height={14} />,
 };
 
-function ListsTab() {
-  const allow = listEntries.filter((e) => e.type === "allow");
-  const block = listEntries.filter((e) => e.type === "block");
+function ListsTab({
+  lists,
+  loading,
+  onChange,
+}: {
+  lists: UserListEntry[];
+  loading: boolean;
+  onChange: (lists: UserListEntry[]) => void;
+}) {
+  const allow = lists.filter((e) => e.type === "allow");
+  const block = lists.filter((e) => e.type === "block");
+
+  const addEntry = (entry: UserListEntry) => onChange([entry, ...lists]);
+  const removeAt = (entry: UserListEntry) =>
+    onChange(lists.filter((e) => !(e.value === entry.value && e.type === entry.type)));
+
+  if (loading) return <LoadingCard />;
 
   return (
     <div className="grid gap-6 lg:grid-cols-2">
-      <ListCard title="Allowlist" accent="safe" entries={allow} />
-      <ListCard title="Blocklist" accent="danger" entries={block} />
+      <ListCard title="Allowlist" accent="safe" type="allow" entries={allow} onAdd={addEntry} onRemove={removeAt} />
+      <ListCard title="Blocklist" accent="danger" type="block" entries={block} onAdd={addEntry} onRemove={removeAt} />
     </div>
   );
 }
@@ -227,27 +280,25 @@ function ListsTab() {
 function ListCard({
   title,
   accent,
+  type,
   entries,
+  onAdd,
+  onRemove,
 }: {
   title: string;
   accent: "safe" | "danger";
-  entries: typeof listEntries;
+  type: "allow" | "block";
+  entries: UserListEntry[];
+  onAdd: (entry: UserListEntry) => void;
+  onRemove: (entry: UserListEntry) => void;
 }) {
-  const [items, setItems] = useState(entries);
   const [value, setValue] = useState("");
 
   const add = () => {
     const v = value.trim();
     if (!v) return;
-    const kind: "domain" | "program" | "address" = v.includes(".")
-      ? "domain"
-      : v.length > 30
-      ? "address"
-      : "program";
-    setItems((prev) => [
-      { value: v, label: "Added by you", kind, type: accent === "safe" ? "allow" : "block" },
-      ...prev,
-    ]);
+    const kind: UserListEntry["kind"] = v.includes(".") ? "domain" : v.length > 30 ? "address" : "program";
+    onAdd({ value: v, label: "Added by you", kind, type });
     setValue("");
   };
 
@@ -257,7 +308,7 @@ function ListCard({
         <div className="flex items-center gap-2">
           <span className={cx("h-2.5 w-2.5 rounded-full", accent === "safe" ? "bg-safe" : "bg-danger")} />
           <h3 className="text-sm font-semibold text-white">{title}</h3>
-          <span className="chip border-white/10 bg-white/5 text-[0.62rem] text-slate-400">{items.length}</span>
+          <span className="chip border-white/10 bg-white/5 text-[0.62rem] text-slate-400">{entries.length}</span>
         </div>
       </div>
       <Divider />
@@ -269,12 +320,15 @@ function ListCard({
           placeholder="Domain, program ID or address…"
           className="flex-1 rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-sm text-slate-200 placeholder:text-slate-600 focus-ring"
         />
-        <button onClick={add} className="btn-ghost px-3">
+        <button onClick={add} className="btn-ghost px-3" aria-label={`Add to ${title}`}>
           <Plus width={16} height={16} />
         </button>
       </div>
       <div className="max-h-80 space-y-1.5 overflow-y-auto px-4 pb-4">
-        {items.map((e, i) => (
+        {entries.length === 0 && (
+          <p className="px-1 py-2 text-xs text-slate-500">No entries yet. Add a domain, program ID or address above.</p>
+        )}
+        {entries.map((e, i) => (
           <div
             key={e.value + i}
             className="group flex items-center justify-between gap-2 rounded-lg bg-black/20 px-3 py-2 ring-1 ring-white/5"
@@ -287,7 +341,7 @@ function ListCard({
               </div>
             </div>
             <button
-              onClick={() => setItems((prev) => prev.filter((_, idx) => idx !== i))}
+              onClick={() => onRemove(e)}
               className="shrink-0 rounded-md p-1 text-slate-600 opacity-0 transition hover:bg-white/10 hover:text-danger focus-ring group-hover:opacity-100"
               aria-label="Remove"
             >
@@ -302,19 +356,42 @@ function ListCard({
 
 /* -------------------------------- Rules -------------------------------- */
 
-function RulesTab() {
-  const [rules, setRules] = useState<UserRule[]>(seedRules);
+function RulesTab({
+  rules,
+  loading,
+  onChange,
+}: {
+  rules: UserRuleEntry[];
+  loading: boolean;
+  onChange: (rules: UserRuleEntry[]) => void;
+}) {
   const [text, setText] = useState("");
+  const [pack, setPack] = useState<{ version: string; rules: RuleDef[] } | null>(null);
+  const [packLoading, setPackLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetchRulePack()
+      .then((p) => !cancelled && setPack(p))
+      .finally(() => !cancelled && setPackLoading(false));
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const toggle = (id: string) =>
-    setRules((prev) => prev.map((r) => (r.id === id ? { ...r, enabled: !r.enabled } : r)));
+    onChange(rules.map((r) => (r.id === id ? { ...r, enabled: !r.enabled } : r)));
 
   const add = () => {
     const t = text.trim();
     if (!t) return;
-    setRules((prev) => [{ id: `u${Date.now()}`, text: t, enabled: true, severity: "medium" }, ...prev]);
+    onChange([{ id: `u${Date.now()}`, text: t, enabled: true, severity: "medium" }, ...rules]);
     setText("");
   };
+
+  const remove = (id: string) => onChange(rules.filter((r) => r.id !== id));
+
+  if (loading) return <LoadingCard />;
 
   return (
     <div className="grid gap-6 lg:grid-cols-2">
@@ -332,15 +409,18 @@ function RulesTab() {
             placeholder="e.g. Block transfers above 10 SOL to new wallets"
             className="flex-1 rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-sm text-slate-200 placeholder:text-slate-600 focus-ring"
           />
-          <button onClick={add} className="btn-ghost px-3">
+          <button onClick={add} className="btn-ghost px-3" aria-label="Add rule">
             <Plus width={16} height={16} />
           </button>
         </div>
         <div className="space-y-1.5 px-4 pb-4">
+          {rules.length === 0 && (
+            <p className="px-1 py-2 text-xs text-slate-500">No custom rules yet.</p>
+          )}
           {rules.map((r) => (
             <div
               key={r.id}
-              className="flex items-center justify-between gap-3 rounded-lg bg-black/20 px-3 py-2.5 ring-1 ring-white/5"
+              className="group flex items-center justify-between gap-3 rounded-lg bg-black/20 px-3 py-2.5 ring-1 ring-white/5"
             >
               <div className="flex items-center gap-2.5">
                 <Toggle checked={r.enabled} onChange={() => toggle(r.id)} label={r.text} />
@@ -348,7 +428,16 @@ function RulesTab() {
                   {r.text}
                 </span>
               </div>
-              <SeverityTag severity={r.severity} />
+              <div className="flex items-center gap-2">
+                <SeverityTag severity={r.severity} />
+                <button
+                  onClick={() => remove(r.id)}
+                  className="rounded-md p-1 text-slate-600 opacity-0 transition hover:bg-white/10 hover:text-danger focus-ring group-hover:opacity-100"
+                  aria-label="Remove rule"
+                >
+                  <Trash width={13} height={13} />
+                </button>
+              </div>
             </div>
           ))}
         </div>
@@ -358,26 +447,48 @@ function RulesTab() {
         <div className="p-4">
           <div className="flex items-center gap-2">
             <h3 className="text-sm font-semibold text-white">Built-in rule pack</h3>
-            <span className="chip border-cyan/30 bg-cyan/10 text-[0.62rem] text-cyan">signed · v1.0</span>
+            {pack && (
+              <span className="chip border-cyan/30 bg-cyan/10 text-[0.62rem] text-cyan">
+                signed · v{pack.version}
+              </span>
+            )}
           </div>
           <p className="mt-1 text-xs text-slate-400">
             Verified before use. Every verdict lists the rules that fired.
           </p>
         </div>
         <Divider />
-        <div className="max-h-96 space-y-1 overflow-y-auto px-4 py-3">
-          {rulePack.map((r) => (
-            <div key={r.id} className="flex items-center justify-between gap-3 py-1.5 text-sm">
-              <span className="flex min-w-0 items-center gap-2">
-                <span className="mono shrink-0 text-slate-600">{r.id}</span>
-                <span className="truncate text-slate-300">{r.text}</span>
-              </span>
-              <SeverityTag severity={r.severity} />
-            </div>
-          ))}
-        </div>
+        {packLoading ? (
+          <div className="flex items-center justify-center gap-2 py-10 text-xs text-slate-400">
+            <Spinner width={14} height={14} className="text-cyan" /> Loading rule pack…
+          </div>
+        ) : !pack ? (
+          <p className="px-4 py-6 text-xs text-slate-500">
+            The built-in rule pack is served by the backend. Set <span className="mono">VITE_API_URL</span> to view it.
+          </p>
+        ) : (
+          <div className="max-h-96 space-y-1 overflow-y-auto px-4 py-3">
+            {pack.rules.map((r) => (
+              <div key={r.id} className="flex items-center justify-between gap-3 py-1.5 text-sm">
+                <span className="flex min-w-0 items-center gap-2">
+                  <span className="mono shrink-0 text-slate-600">{r.id}</span>
+                  <span className="truncate text-slate-300" title={r.description}>{r.title}</span>
+                </span>
+                <SeverityTag severity={r.severity} />
+              </div>
+            ))}
+          </div>
+        )}
       </Card>
     </div>
+  );
+}
+
+function LoadingCard() {
+  return (
+    <Card className="flex items-center justify-center gap-2 py-16 text-sm text-slate-400">
+      <Spinner width={16} height={16} className="text-cyan" /> Loading your settings…
+    </Card>
   );
 }
 

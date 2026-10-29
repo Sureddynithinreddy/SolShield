@@ -104,6 +104,45 @@ describe("admin routes auth", () => {
   });
 });
 
+describe("GET /api/rules", () => {
+  it("returns the built-in rule pack with a version", async () => {
+    const res = await app.inject({ method: "GET", url: "/api/rules" });
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    expect(body.ok).toBe(true);
+    expect(body.version).toMatch(/^\d+\.\d+\.\d+$/);
+    expect(Array.isArray(body.rules)).toBe(true);
+    expect(body.rules.some((r: { id: string }) => r.id === "R-001")).toBe(true);
+  });
+});
+
+describe("GET /api/settings", () => {
+  it("400s without an owner", async () => {
+    const res = await app.inject({ method: "GET", url: "/api/settings" });
+    expect(res.statusCode).toBe(400);
+  });
+  it("returns defaults when no DB is configured", async () => {
+    const res = await app.inject({ method: "GET", url: "/api/settings?owner=SomeWallet111" });
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    expect(body.ok).toBe(true);
+    expect(body.persisted).toBe(false);
+    expect(body.settings.strictness).toBe("balanced");
+    expect(body.settings.lists).toEqual([]);
+  });
+});
+
+describe("PUT /api/settings", () => {
+  it("503s without a DB (persistence unavailable)", async () => {
+    const res = await app.inject({
+      method: "PUT",
+      url: "/api/settings",
+      payload: { owner: "SomeWallet111", strictness: "strict", lists: [], rules: [] },
+    });
+    expect(res.statusCode).toBe(503);
+  });
+});
+
 describe("resolveDeployedDaysAgo", () => {
   it("computes days-ago from a block time", async () => {
     const { resolveDeployedDaysAgo } = await import("../chain.js");
